@@ -17,7 +17,10 @@
 
 
 
-struct reliable_state {
+/* reliable_state type is the main data structure that holds all the crucial information for this lab 
+   going to need to include maybe a sender and a receiver? 
+*/
+struct reliable_state {  
   rel_t *next;			/* Linked list for traversing all connections */
   rel_t **prev;
 
@@ -25,8 +28,10 @@ struct reliable_state {
 
   /* Add your own data fields below this */
 
+  int seq_num;
+  int ack_num;
 };
-rel_t *rel_list;
+rel_t *rel_list; //rel_t is a type of reliable state 
 
 
 
@@ -45,7 +50,7 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
   r = xmalloc (sizeof (*r));
   memset (r, 0, sizeof (*r));
 
-  if (!c) {
+  if (!c) { //create a connection if there is no connection 
     c = conn_create (r, ss);
     if (!c) {
       free (r);
@@ -53,8 +58,8 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
     }
   }
 
-  r->c = c;
-  r->next = rel_list;
+  r->c = c; //set up r's connection 
+  r->next = rel_list; 
   r->prev = &rel_list;
   if (rel_list)
     rel_list->prev = &r->next;
@@ -72,7 +77,8 @@ rel_destroy (rel_t *r)
   if (r->next)
     r->next->prev = r->prev;
   *r->prev = r->next;
-  conn_destroy (r->c);
+  conn_destroy (r->c); //destroy the connection 
+
 
   /* Free any other allocated memory here */
 }
@@ -96,6 +102,23 @@ rel_demux (const struct config_common *cc,
 void
 rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 {
+    //increment the acknowledgement number
+    //send an acknowledgement 
+
+  /* going to have to determine what type of packet we have
+     couple options: 
+        ack packet only 8 bytes
+        data packet 
+  */
+  pkt_length = ntohs(pkt->len); //pkt->len comes in the type of uint16_t 
+
+  if (pkt_length == 8) {
+    //pkt is an ack packet 
+  } else {
+    //pkt is a data packet 
+  }
+
+
 }
 
 
