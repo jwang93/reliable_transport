@@ -157,6 +157,18 @@ rel_read (rel_t *s)
 void
 rel_output (rel_t *r)
 {
+	//first get size available in connection's buffer space
+	//then, get length of message
+	//pass in the available buffer space available to conn_output (or less if message is smaller)
+	//get result
+	size_t availableSpace = conn_bufspace(r->c);
+
+//	int result = conn_output (r->c, const void *_buf, size_t _n)
+//	if(result < 0) {
+//		//error
+//	} else {
+//		//success
+//	}
 }
 
 void
