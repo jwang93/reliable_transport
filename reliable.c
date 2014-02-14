@@ -17,6 +17,22 @@
 
 
 
+
+//need some abstraction to represent the sender 
+struct Sender {
+  int current_seq_num;
+  int send_window_size;
+  int last_frame_sent;
+}; 
+
+
+//need some abstraction to represent the receiver 
+struct Receiver {
+  int receive_window_size;
+  int largest_acceptable_frame;
+  int last_frame_received; 
+};
+
 /* reliable_state type is the main data structure that holds all the crucial information for this lab 
    going to need to include maybe a sender and a receiver? 
 */
@@ -27,13 +43,11 @@ struct reliable_state {
   conn_t *c;			/* This is the connection object */
 
   /* Add your own data fields below this */
+  struct Sender sender;
+  struct Receiver receiver;
 
-  int seq_num;
-  int ack_num;
 };
 rel_t *rel_list; //rel_t is a type of reliable state 
-
-
 
 
 
