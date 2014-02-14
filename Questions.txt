@@ -1,0 +1,10 @@
+Questions
+
+1. In rel_recvpkt (rel_t *r, packet_t *pkt, size_t n), this refers to the receiver receiving the packet from the sender or the sender receiving some sort of acknowledge from the receiver? Or both? 
+
+	Could be both... If you got an ack packet, it must have come from the receiver to the sender. Wouldn't make sense any other way. 
+
+2. In our program, which process is the receiver and the sender? My guess is that what process you type the input in, that is the sender and the other process is the receiver. Does that mean the sender and receiver can change over the course of a program...? Not too sure whether we need to even understand this detail. 
+
+
+

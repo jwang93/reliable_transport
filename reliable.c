@@ -23,6 +23,7 @@ struct Sender {
   int current_seq_num;
   int send_window_size;
   int last_frame_sent;
+  packet pack;
 }; 
 
 
@@ -139,6 +140,18 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 void
 rel_read (rel_t *s)
 {
+  // Gets input from conn_input, which I believe gets input from STDIN 
+  int data_size = conn_input(s->c, s->sender->packet, 500 -1 ); //500 is the max size of packet 
+  
+  if (data_size == 0) {
+    //no currently data available... stall on this? 
+  } else if (data_size > 0) {
+    //you have received some data 
+    s->receiver->last_frame_received--;
+  } else {
+    //you got an error 
+  }
+
 }
 
 void
