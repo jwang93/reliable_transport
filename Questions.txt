@@ -4,7 +4,8 @@ Questions
 
 	Could be both... If you got an ack packet, it must have come from the receiver to the sender. Wouldn't make sense any other way. 
 
-2. In our program, which process is the receiver and the sender? My guess is that what process you type the input in, that is the sender and the other process is the receiver. Does that mean the sender and receiver can change over the course of a program...? Not too sure whether we need to even understand this detail. 
+2. In our program, which process is the receiver and the sender? My guess is that what process you type the input in, that is the sender and the other process is the receiver. Does that mean the sender and receiver can change over the course of a program...? Not too sure whether we need to even understand this detail.
+--Jay, I think you're correct about the which the sender and the receiver are.  And I do think that either process can be the sender or the receiver.  From the lab:  "This means you don't need to handle demultiplex traffic at server side in server/client mode. In the first mode, one reliable transport layer should include both the sender component and receiver component. Correspondingly, one reliable connection bewteen two processes will support two-way data transmission simultaneously and asynchronously."
 
-
+3. In rel_output, where is the buffer stored?  I need to pass it in to the conn_output function.
 
