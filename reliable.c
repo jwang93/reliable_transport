@@ -20,7 +20,6 @@
 
 //need some abstraction to represent the sender 
 struct Sender {
-  int current_seq_num;
   int send_window_size;
   int last_frame_sent;
   packet_t pack;
