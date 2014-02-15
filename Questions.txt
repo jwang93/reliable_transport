@@ -9,3 +9,5 @@ Questions
 
 3. In rel_output, where is the buffer stored?  I need to pass it in to the conn_output function.
 
+
+4. Where in the code is the distinction made between ack_packet and real packet? It looks like they are essentially the same. Do I need to store an ack_packet in the receiver? Only the receiver sends ack_packets to the sender right? 
