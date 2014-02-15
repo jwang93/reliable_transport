@@ -32,6 +32,7 @@ struct Receiver {
   int receive_window_size;
   int largest_acceptable_frame;
   int last_frame_received; 
+  packet_t pack;
 };
 
 /* reliable_state type is the main data structure that holds all the crucial information for this lab */
@@ -147,13 +148,13 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 void
 rel_read (rel_t *s)
 {
-  // Gets input from conn_input, which I believe gets input from STDIN 
-  int data_size = conn_input(s->c, s->sender->packet, 500 -1 ); //500 is the max size of packet 
+  /* Gets input from conn_input, which I believe gets input from STDIN */ß
+  int data_size = conn_input(s->c, s->sender->packet.data, 500); //500 is the max size of packet 
   
   if (data_size == 0) {
     //no currently data available... stall on this? 
   } else if (data_size > 0) {
-    //send the packet 
+    /* process the packet */ 
     s->sender.pack.ackno = s->receiver.last_frame_received++;
     s->receiver->last_frame_received--;
     conn_sendpkt (s->c, &s->pack, len); 
@@ -173,12 +174,8 @@ rel_output (rel_t *r)
 	//get result
 	size_t availableSpace = conn_bufspace(r->c);
 
-//	int result = conn_output (r->c, const void *_buf, size_t _n)
-//	if(result < 0) {
-//		//error
-//	} else {
-//		//success
-//	}
+  int bytes_written = conn_output(r->c, r->receiver.pack.data, 500);  
+  /* send ack packet back to receiver */ 
 }
 
 void

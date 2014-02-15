@@ -11,3 +11,17 @@ Questions
 
 
 4. Where in the code is the distinction made between ack_packet and real packet? It looks like they are essentially the same. Do I need to store an ack_packet in the receiver? Only the receiver sends ack_packets to the sender right? 
+
+
+5. Need to write out the order of how things get updated. 
+
+1) sender sends packet
+	- last_frame_sent++
+	- conn_sendpkt() called 
+
+2) receiver receives packet 
+	- rel_recv() called 
+	- conn_input() called to read the packet 
+	- conn_output() called to write the packet data 
+	- last_frame_received = packet.sequenceNumber 
+	- 
