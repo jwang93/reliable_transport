@@ -16,11 +16,14 @@
 #include "rlib.h"
 
 
+#define MAX_DATA_SIZE 500
+#define ACK_PACKET_HEADER 8
+#define DATA_PACKET_HEADER 12
 
 
 //need some abstraction to represent the sender
 struct Sender {
-  int send_window_size;
+  int send_window_size; //How do we know how large the SWS is?
   int last_frame_sent;
   packet_t pack;
 };
@@ -28,11 +31,17 @@ struct Sender {
 
 //need some abstraction to represent the receiver
 struct Receiver {
-  int receive_window_size;
-  int largest_acceptable_frame;
+  int largest_acceptable_seqno;   //going to be needed once we have a RWS/SWS
   int last_frame_received;
   packet_t pack;
 };
+
+
+/*
+Ideally, the sender and receiver should not be in the reliable_state struct. They should be their own
+entities. However, because all the signatures are programmed to accept only rel_T, we thought that it would
+be most convenient to include sender/receiver in the reliable_state struct.
+*/
 
 /* reliable_state type is the main data structure that holds all the crucial information for this lab */
 struct reliable_state {
@@ -79,8 +88,26 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
 
   /* Do any other initialization you need here */
 
+  initialize(r);
 
   return r;
+}
+
+
+void initialize(rel_t *r) {
+
+  r->sender.packet.cksum = 0;
+  r->sender.packet.len = 0;
+  r->sender.packet.ackno = 0;
+  r->sender.packet.seqno = 0;
+  r->sender.last_frame_sent = 0;
+
+  r->receiver.packet.cksum = 0;
+  r->receiver.packet.len = 0;
+  r->receiver.packet.ackno = 0;
+  r->receiver.packet.seqno = 0;
+  r->receiver.last_frame_received = 0;
+
 }
 
 void
