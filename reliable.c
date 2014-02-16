@@ -18,24 +18,24 @@
 
 
 
-//need some abstraction to represent the sender 
+//need some abstraction to represent the sender
 struct Sender {
   int send_window_size;
   int last_frame_sent;
   packet_t pack;
-}; 
+};
 
 
-//need some abstraction to represent the receiver 
+//need some abstraction to represent the receiver
 struct Receiver {
   int receive_window_size;
   int largest_acceptable_frame;
-  int last_frame_received; 
+  int last_frame_received;
   packet_t pack;
 };
 
 /* reliable_state type is the main data structure that holds all the crucial information for this lab */
-struct reliable_state {  
+struct reliable_state {
   rel_t *next;			/* Linked list for traversing all connections */
   rel_t **prev;
   conn_t *c;			/* This is the connection object */
@@ -45,7 +45,7 @@ struct reliable_state {
   struct Receiver receiver;
 
 };
-rel_t *rel_list; //rel_t is a type of reliable state 
+rel_t *rel_list; //rel_t is a type of reliable state
 
 
 
@@ -62,7 +62,7 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
   r = xmalloc (sizeof (*r));
   memset (r, 0, sizeof (*r));
 
-  if (!c) { //create a connection if there is no connection 
+  if (!c) { //create a connection if there is no connection
     c = conn_create (r, ss);
     if (!c) {
       free (r);
@@ -70,8 +70,8 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
     }
   }
 
-  r->c = c; //set up r's connection 
-  r->next = rel_list; 
+  r->c = c; //set up r's connection
+  r->next = rel_list;
   r->prev = &rel_list;
   if (rel_list)
     rel_list->prev = &r->next;
@@ -89,7 +89,7 @@ rel_destroy (rel_t *r)
   if (r->next)
     r->next->prev = r->prev;
   *r->prev = r->next;
-  conn_destroy (r->c); //destroy the connection 
+  conn_destroy (r->c); //destroy the connection
 
 
   /* Free any other allocated memory here */
@@ -123,21 +123,21 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
   }
 
   /* going to have to determine what type of packet we have
-     couple options: 
+     couple options:
         ack packet only 8 bytes
-        data packet 
+        data packet
   */
-  pkt_length = ntohs(pkt->len); //pkt->len comes in the type of uint16_t 
+  pkt_length = ntohs(pkt->len); //pkt->len comes in the type of uint16_t
 
-  if (pkt_length == 8) {
+  if (pkt_length >= 8) {
     rel_read(r);
-    /* 
-      If the packet is an ack_packet or data_packet, read the packet 
+    /*
+      If the packet is an ack_packet or data_packet, read the packet
     */
-  } else {
+  } if(pkt_length > 8) {
     rel_output(r);
     /*
-      If the packet is a data_packet, output the packet to the console through conn_output 
+      If the packet is a data_packet, output the packet to the console through conn_output
     */
   }
 
@@ -148,18 +148,18 @@ void
 rel_read (rel_t *s)
 {
   /* Gets input from conn_input, which I believe gets input from STDIN */ß
-  int data_size = conn_input(s->c, s->sender->packet.data, 500); //500 is the max size of packet 
-  
+  int data_size = conn_input(s->c, s->sender->packet.data, 500); //500 is the max size of packet
+
   if (data_size == 0) {
-    //no currently data available... stall on this? 
+    //no currently data available... stall on this?
   } else if (data_size > 0) {
-    /* process the packet */ 
+    /* process the packet */
     s->sender.pack.ackno = s->receiver.last_frame_received++;
     s->receiver->last_frame_received--;
-    conn_sendpkt (s->c, &s->pack, len); 
+    conn_sendpkt (s->c, &s->pack, len);
 
   } else {
-    //you got an error 
+    //you got an error
   }
 
 }
@@ -173,8 +173,8 @@ rel_output (rel_t *r)
 	//get result
 	size_t availableSpace = conn_bufspace(r->c);
 
-  int bytes_written = conn_output(r->c, r->receiver.pack.data, 500);  
-  /* send ack packet back to receiver */ 
+  int bytes_written = conn_output(r->c, r->receiver.pack.data, 500);
+  /* send ack packet back to receiver */
 }
 
 void
