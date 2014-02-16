@@ -25,7 +25,7 @@
 struct Sender {
   int send_window_size; //How do we know how large the SWS is?
   int last_frame_sent;
-  packet_t pack;
+  packet_t packet;
 };
 
 
@@ -33,7 +33,7 @@ struct Sender {
 struct Receiver {
   int largest_acceptable_seqno;   //going to be needed once we have a RWS/SWS
   int last_frame_received;
-  packet_t pack;
+  packet_t packet;
 };
 
 
@@ -56,6 +56,21 @@ struct reliable_state {
 };
 rel_t *rel_list; //rel_t is a type of reliable state
 
+void initialize(rel_t *r) {
+
+  r->sender.packet.cksum = 0;
+  r->sender.packet.len = 0;
+  r->sender.packet.ackno = 0;
+  r->sender.packet.seqno = 1;
+  r->sender.last_frame_sent = 0;
+
+  r->receiver.packet.cksum = 0;
+  r->receiver.packet.len = 0;
+  r->receiver.packet.ackno = 0;
+  r->receiver.packet.seqno = 0;
+  r->receiver.last_frame_received = 0;
+
+}
 
 
 /* Creates a new reliable protocol session, returns NULL on failure.
@@ -93,22 +108,6 @@ rel_create (conn_t *c, const struct sockaddr_storage *ss,
   return r;
 }
 
-
-void initialize(rel_t *r) {
-
-  r->sender.packet.cksum = 0;
-  r->sender.packet.len = 0;
-  r->sender.packet.ackno = 0;
-  r->sender.packet.seqno = 1;
-  r->sender.last_frame_sent = 0;
-
-  r->receiver.packet.cksum = 0;
-  r->receiver.packet.len = 0;
-  r->receiver.packet.ackno = 0;
-  r->receiver.packet.seqno = 0;
-  r->receiver.last_frame_received = 0;
-
-}
 
 void
 rel_destroy (rel_t *r)
@@ -154,7 +153,7 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
         ack packet only 8 bytes
         data packet
   */
-  pkt_length = ntohs(pkt->len); //pkt->len comes in the type of uint16_t
+  int pkt_length = ntohs(pkt->len); //pkt->len comes in the type of uint16_t
 
 
   //Case when pkt is ACK or DATA
@@ -177,7 +176,7 @@ void
 rel_read (rel_t *s)
 {
   /* Gets input from conn_input, which I believe gets input from STDIN */
-  int data_size = conn_input(s->c, s->sender->packet.data, MAX_DATA_SIZE);
+  int data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
 
   if (data_size == 0) {
     return;
@@ -186,7 +185,7 @@ rel_read (rel_t *s)
     s->sender.last_frame_sent++;
     s->sender.packet.seqno = s->sender.last_frame_sent;
     s->sender.packet.ackno = -1; //NOT SURE?
-    conn_sendpkt (s->c, &s->pack, len);
+    conn_sendpkt (s->c, &s->sender.packet, s->sender.packet.len);
   } else {
     //you got an error
   }
