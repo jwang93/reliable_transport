@@ -99,7 +99,7 @@ void initialize(rel_t *r) {
   r->sender.packet.cksum = 0;
   r->sender.packet.len = 0;
   r->sender.packet.ackno = 0;
-  r->sender.packet.seqno = 0;
+  r->sender.packet.seqno = 1;
   r->sender.last_frame_sent = 0;
 
   r->receiver.packet.cksum = 0;
@@ -156,12 +156,14 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
   */
   pkt_length = ntohs(pkt->len); //pkt->len comes in the type of uint16_t
 
-  if (pkt_length >= 8) {
+
+  //Case when pkt is ACK or DATA
+  if (pkt_length >= ACK_PACKET_HEADER) {
     rel_read(r);
     /*
       If the packet is an ack_packet or data_packet, read the packet
     */
-  } if(pkt_length > 8) {
+  } if(pkt_length >= DATA_PACKET_HEADER) {
     rel_output(r);
     /*
       If the packet is a data_packet, output the packet to the console through conn_output
@@ -174,17 +176,17 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 void
 rel_read (rel_t *s)
 {
-  /* Gets input from conn_input, which I believe gets input from STDIN */ß
-  int data_size = conn_input(s->c, s->sender->packet.data, 500); //500 is the max size of packet
+  /* Gets input from conn_input, which I believe gets input from STDIN */
+  int data_size = conn_input(s->c, s->sender->packet.data, MAX_DATA_SIZE);
 
   if (data_size == 0) {
-    //no currently data available... stall on this?
+    return;
   } else if (data_size > 0) {
-    /* process the packet */
-    s->sender.pack.ackno = s->receiver.last_frame_received++;
-    s->receiver->last_frame_received--;
+    s->sender.packet.len = data_size;
+    s->sender.last_frame_sent++;
+    s->sender.packet.seqno = s->sender.last_frame_sent;
+    s->sender.packet.ackno = -1; //NOT SURE?
     conn_sendpkt (s->c, &s->pack, len);
-
   } else {
     //you got an error
   }
