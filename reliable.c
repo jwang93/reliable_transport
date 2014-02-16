@@ -20,10 +20,9 @@
 
 //need some abstraction to represent the sender 
 struct Sender {
-  int current_seq_num;
   int send_window_size;
   int last_frame_sent;
-  packet pack;
+  packet_t pack;
 }; 
 
 
@@ -32,15 +31,13 @@ struct Receiver {
   int receive_window_size;
   int largest_acceptable_frame;
   int last_frame_received; 
+  packet_t pack;
 };
 
-/* reliable_state type is the main data structure that holds all the crucial information for this lab 
-   going to need to include maybe a sender and a receiver? 
-*/
+/* reliable_state type is the main data structure that holds all the crucial information for this lab */
 struct reliable_state {  
   rel_t *next;			/* Linked list for traversing all connections */
   rel_t **prev;
-
   conn_t *c;			/* This is the connection object */
 
   /* Add your own data fields below this */
@@ -117,8 +114,13 @@ rel_demux (const struct config_common *cc,
 void
 rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 {
-    //increment the acknowledgement number
-    //send an acknowledgement 
+
+  int checksum = pkt->cksum;
+  int compare_checksum = cksum(pkt->data, n);
+
+  if (compare_checksum != checksum) {
+    /* We have an error. Discard the packet. It is corrupted. */
+  }
 
   /* going to have to determine what type of packet we have
      couple options: 
@@ -128,11 +130,16 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
   pkt_length = ntohs(pkt->len); //pkt->len comes in the type of uint16_t 
 
   if (pkt_length == 8) {
-    //pkt is an ack packet 
+    rel_read(r);
+    /* 
+      If the packet is an ack_packet or data_packet, read the packet 
+    */
   } else {
-    //pkt is a data packet 
+    rel_output(r);
+    /*
+      If the packet is a data_packet, output the packet to the console through conn_output 
+    */
   }
-
 
 }
 
@@ -140,14 +147,17 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 void
 rel_read (rel_t *s)
 {
-  // Gets input from conn_input, which I believe gets input from STDIN 
-  int data_size = conn_input(s->c, s->sender->packet, 500 -1 ); //500 is the max size of packet 
+  /* Gets input from conn_input, which I believe gets input from STDIN */ß
+  int data_size = conn_input(s->c, s->sender->packet.data, 500); //500 is the max size of packet 
   
   if (data_size == 0) {
     //no currently data available... stall on this? 
   } else if (data_size > 0) {
-    //you have received some data 
+    /* process the packet */ 
+    s->sender.pack.ackno = s->receiver.last_frame_received++;
     s->receiver->last_frame_received--;
+    conn_sendpkt (s->c, &s->pack, len); 
+
   } else {
     //you got an error 
   }
@@ -163,12 +173,8 @@ rel_output (rel_t *r)
 	//get result
 	size_t availableSpace = conn_bufspace(r->c);
 
-//	int result = conn_output (r->c, const void *_buf, size_t _n)
-//	if(result < 0) {
-//		//error
-//	} else {
-//		//success
-//	}
+  int bytes_written = conn_output(r->c, r->receiver.pack.data, 500);  
+  /* send ack packet back to receiver */ 
 }
 
 void
