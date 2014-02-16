@@ -202,7 +202,17 @@ rel_output (rel_t *r)
 	//get result
 	size_t availableSpace = conn_bufspace(r->c);
 
-  int bytes_written = conn_output(r->c, r->receiver.pack.data, 500);
+  /* TWO Checls
+    1. enough available space
+    2. making sure the receiver data is not empty
+  */
+  if (availableSpace >= r->receiver.packet.len && r->receiver.packet.len > 0) {
+    int bytes_written = conn_output(r->c, r->receiver.packet.data, r->receiver.packet.len);
+    r->receiver.last_frame_received++; //by outputting the data, you have proved you have received the packet
+    r->receiver.packet.len = 0;
+
+  }
+
   /* send ack packet back to receiver */
 }
 
