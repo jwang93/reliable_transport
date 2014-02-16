@@ -137,9 +137,16 @@ rel_demux (const struct config_common *cc,
 {
 }
 
+void debugger (char* function_name, packet_t *pkt) {
+
+	 fprintf(stderr, "cksum:%x, len:%d, ackno:%d, seqno:%d, %s_data: %s \n",
+	    pkt->cksum, pkt->len, pkt->ackno, pkt->seqno, "rel_recvpkt", pkt->data);
+}
+
 void
 rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 {
+	debugger("rel_recvpkt", pkt);
 
 //  print_pkt (pkt, (char*)'i', pkt->len);
   int checksum = pkt->cksum;
