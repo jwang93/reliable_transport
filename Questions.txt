@@ -27,3 +27,7 @@ Questions
 	-
 
 6.  How are we supposed to store window size?
+
+7.  Why is ackno stored in the sender's data packet?
+
+8.  How are we supposed to use op in print_pkt?

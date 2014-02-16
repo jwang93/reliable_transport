@@ -140,15 +140,13 @@ rel_demux (const struct config_common *cc,
 void debugger (char* function_name, packet_t *pkt) {
 
 	 fprintf(stderr, "cksum:%x, len:%d, ackno:%d, seqno:%d, %s_data: %s \n",
-	    pkt->cksum, pkt->len, pkt->ackno, pkt->seqno, "rel_recvpkt", pkt->data);
+	    pkt->cksum, pkt->len, pkt->ackno, pkt->seqno, function_name, pkt->data);
 }
 
 void
 rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 {
 	debugger("rel_recvpkt", pkt);
-
-//  print_pkt (pkt, (char*)'i', pkt->len);
   int checksum = pkt->cksum;
   int compare_checksum = cksum(pkt->data, n);
 
@@ -162,7 +160,6 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
         data packet
   */
   int pkt_length = ntohs(pkt->len); //pkt->len comes in the type of uint16_t
-
 
   //Case when pkt is ACK or DATA
   if (pkt_length >= ACK_PACKET_HEADER) {
@@ -184,8 +181,9 @@ void
 rel_read (rel_t *s)
 {
   /* Gets input from conn_input, which I believe gets input from STDIN */
-  int data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
 
+int data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
+  fprintf(stderr, "in rel_read, packet size received is %i", data_size);
   if (data_size == 0) {
     return;
   } else if (data_size > 0) {
