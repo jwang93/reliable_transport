@@ -141,6 +141,7 @@ void
 rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 {
 
+//  print_pkt (pkt, (char*)'i', pkt->len);
   int checksum = pkt->cksum;
   int compare_checksum = cksum(pkt->data, n);
 
