@@ -63,12 +63,14 @@ void initialize(rel_t *r) {
   r->sender.packet.ackno = 0;
   r->sender.packet.seqno = 1;
   r->sender.last_frame_sent = 0;
+  r->sender.packet.data[500] = '\0';		//trying to initialize sender packet data
 
   r->receiver.packet.cksum = 0;
   r->receiver.packet.len = 0;
   r->receiver.packet.ackno = 0;
-  r->receiver.packet.seqno = 0;
+  r->receiver.packet.seqno = 0;		//should this seqno be = 1?
   r->receiver.last_frame_received = 0;
+  r->receiver.packet.data[500] = '\0';		//trying to initialize receiver packet data
 
 }
 
@@ -176,14 +178,25 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
 
 }
 
+void preparePacketForSending(packet_t *pkt) {
+	int packetLength = pkt->len;
+	pkt->ackno = htons(pkt->len);
+	pkt->len = htons(pkt->len);
+	if(pkt->len >= DATA_PACKET_HEADER) {
+		pkt->seqno = htonl(pkt->seqno);
+	}
+	pkt->cksum = 0;
+	pkt->cksum = cksum(pkt, packetLength);
+}
+
 
 void
 rel_read (rel_t *s)
 {
   /* Gets input from conn_input, which I believe gets input from STDIN */
 
-int data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
-  fprintf(stderr, "in rel_read, packet size received is %i", data_size);
+  int data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
+  fprintf(stderr, "in rel_read, packet size received is %i \n", data_size);
   if (data_size == 0) {
     return;
   } else if (data_size > 0) {
@@ -191,7 +204,10 @@ int data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
     s->sender.last_frame_sent++;
     s->sender.packet.seqno = s->sender.last_frame_sent;
     s->sender.packet.ackno = -1; //NOT SURE?
+    preparePacketForSending(&(s->sender.packet));
     conn_sendpkt (s->c, &s->sender.packet, s->sender.packet.len);
+    debugger("rel_read for sender", &(s->sender.packet));
+    debugger("rel_read for receiver", &(s->receiver.packet));
   } else {
     //you got an error
   }
