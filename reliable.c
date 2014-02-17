@@ -161,15 +161,18 @@ rel_recvpkt (rel_t *r, packet_t *pkt, size_t n)
         ack packet only 8 bytes
         data packet
   */
-  int pkt_length = ntohs(pkt->len); //pkt->len comes in the type of uint16_t
+  pkt->len = ntohs(pkt->len); //pkt->len comes in the type of uint16_t
+  fprintf(stderr, "in rel_recvpkt, packet size received is %i \n", pkt->len);
+  r->receiver.packet = *pkt;	//had to set the receiver packet to pkt somehow but seems hacky.
+  	  	  	  	  	  	  	  	//without setting it here, rel_output doesn't have the received packet
 
   //Case when pkt is ACK or DATA
-  if (pkt_length >= ACK_PACKET_HEADER) {
+  if (pkt->len >= ACK_PACKET_HEADER) {
     rel_read(r);
     /*
       If the packet is an ack_packet or data_packet, read the packet
     */
-  } if(pkt_length >= DATA_PACKET_HEADER) {
+  } if(pkt->len >= DATA_PACKET_HEADER) {
     rel_output(r);
     /*
       If the packet is a data_packet, output the packet to the console through conn_output
@@ -196,18 +199,18 @@ rel_read (rel_t *s)
   /* Gets input from conn_input, which I believe gets input from STDIN */
 
   int data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
-  fprintf(stderr, "in rel_read, packet size received is %i \n", data_size);
+
   if (data_size == 0) {
     return;
   } else if (data_size > 0) {
-    s->sender.packet.len = data_size;
+    s->sender.packet.len = data_size + DATA_PACKET_HEADER;
     s->sender.last_frame_sent++;
     s->sender.packet.seqno = s->sender.last_frame_sent;
     s->sender.packet.ackno = -1; //NOT SURE?
-    preparePacketForSending(&(s->sender.packet));
-    conn_sendpkt (s->c, &s->sender.packet, s->sender.packet.len);
     debugger("rel_read for sender", &(s->sender.packet));
     debugger("rel_read for receiver", &(s->receiver.packet));
+    preparePacketForSending(&(s->sender.packet));
+    conn_sendpkt (s->c, &s->sender.packet, s->sender.packet.len);
   } else {
     //you got an error
   }
@@ -221,8 +224,9 @@ rel_output (rel_t *r)
 	//then, get length of message
 	//pass in the available buffer space available to conn_output (or less if message is smaller)
 	//get result
-	size_t availableSpace = conn_bufspace(r->c);
-
+	int availableSpace = conn_bufspace(r->c);
+	fprintf(stderr, "available bufferspace for printing is: %i \n",availableSpace);
+	fprintf(stderr, "receiver packet length is %i \n",r->receiver.packet.len);
   /* TWO Checls
     1. enough available space
     2. making sure the receiver data is not empty
