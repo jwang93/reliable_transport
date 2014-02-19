@@ -60,7 +60,6 @@ void initialize(rel_t *r, int windowSize) {
 	r->sender.last_frame_sent = -1;
 	r->sender.packet.data[500] = '\0';//trying to initialize sender packet data
 	r->sender.send_window_size = windowSize;
-
 	r->receiver.packet.cksum = 0;
 	r->receiver.packet.len = 0;
 	r->receiver.packet.ackno = 1;
@@ -182,7 +181,7 @@ void preparePacketForSending(packet_t *pkt) {
 void rel_read(rel_t *s) {
 	/* Gets input from conn_input, which I believe gets input from STDIN */
 	int positionInArray = (s->sender.last_frame_sent + 1) % s->sender.send_window_size;
-	fprintf(stderr, "window size is: %i", s->sender.send_window_size);
+	fprintf(stderr, "window size is: %i \n", s->sender.send_window_size);
 	int data_size = 0;
 	if(s->windowBuffer[positionInArray].isFull == 0) {
 		//only get the data if there is room in the buffer
@@ -220,9 +219,12 @@ void rel_read(rel_t *s) {
 		packetBuffer->isFull = 1;
 		packetBuffer->ptr = sendingPacketCopy;
 		packetBuffer->timeStamp = 0;	//will need to change later
+
+		fprintf(stderr, "size of the window buffer is: %i \n", sizeof(&s->windowBuffer));
 		
 		s->windowBuffer[positionInArray] = *packetBuffer;
 		conn_sendpkt(s->c, &s->sender.packet, s->sender.packet.len);
+		memset(&s->sender.packet, 0, sizeof(&s->sender.packet));
 	} 
 
 	else {
