@@ -32,6 +32,11 @@ struct Receiver {
 	packet_t packet;
 };
 
+struct WindowBuffer {
+	packet_t* ptr;
+	int isFull;		//0 is for empty, 1 is for full
+};
+
 /*
  Ideally, the sender and receiver should not be in the reliable_state struct. They should be their own
  entities. However, because all the signatures are programmed to accept only rel_T, we thought that it would
@@ -47,26 +52,27 @@ struct reliable_state {
 	/* Add your own data fields below this */
 	struct Sender sender;
 	struct Receiver receiver;
+	struct WindowBuffer windowBuffer[];
 
 };
 rel_t *rel_list; //rel_t is a type of reliable state
 
-void initialize(rel_t *r) {
+void initialize(rel_t *r, int windowSize) {
 
 	r->sender.packet.cksum = 0;
 	r->sender.packet.len = 0;
-	r->sender.packet.ackno = 0;
-	r->sender.packet.seqno = 1;
+	r->sender.packet.ackno = 1;
+	r->sender.packet.seqno = 0;
 	r->sender.last_frame_sent = 0;
 	r->sender.packet.data[500] = '\0';//trying to initialize sender packet data
+	r->sender.send_window_size = windowSize;
 
 	r->receiver.packet.cksum = 0;
 	r->receiver.packet.len = 0;
-	r->receiver.packet.ackno = 0;
+	r->receiver.packet.ackno = 1;
 	r->receiver.packet.seqno = 0;		//should this seqno be = 1?
 	r->receiver.last_frame_received = 0;
 	r->receiver.packet.data[500] = '\0';//trying to initialize receiver packet data
-
 }
 
 /* Creates a new reliable protocol session, returns NULL on failure.
@@ -98,7 +104,7 @@ rel_create(conn_t *c, const struct sockaddr_storage *ss,
 
 	/* Do any other initialization you need here */
 
-	initialize(r);
+	initialize(r, &cc->window);
 
 	return r;
 }
@@ -151,7 +157,8 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 	//Case when pkt is ACK or DATA
 	if (pkt->len >= ACK_PACKET_HEADER) {
-		rel_read(r);
+
+
 		/*
 		 If the packet is an ack_packet or data_packet, read the packet
 		 */
@@ -178,8 +185,14 @@ void preparePacketForSending(packet_t *pkt) {
 
 void rel_read(rel_t *s) {
 	/* Gets input from conn_input, which I believe gets input from STDIN */
-
-	int data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
+	int positionInArray = (s->sender->last_frame_sent + 1) % s->sender.send_window_size;
+	int data_size = 0;
+	if(s->windowBuffer[positionInArray].isFull == 0) {
+		//only get the data if there is room in the buffer
+		data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
+	} else {
+		return;
+	}
 
 	//need to check sender window and see if full 
 	//make an array of packets 3 or 4 times the size of the window 
@@ -190,10 +203,16 @@ void rel_read(rel_t *s) {
 		s->sender.packet.len = data_size + DATA_PACKET_HEADER;
 		s->sender.last_frame_sent++;
 		s->sender.packet.seqno = s->sender.last_frame_sent;
-		s->sender.packet.ackno = -1; //NOT SURE?
+		s->sender.packet.ackno = s->sender.packet.seqno + 1; //ackno should always be 1 higher than seqno
 		debugger("rel_read for sender", &(s->sender.packet));
 		debugger("rel_read for receiver", &(s->receiver.packet));
 		preparePacketForSending(&(s->sender.packet));
+		struct packet_t *sendingPacketCopy = malloc(sizeof packet_t);
+		memcpy(sendingPacketCopy, s->sender.packet, sizeof s->sender.packet);
+		struct WindowBuffer packetBuffer = malloc(sizeof (struct WindowBuffer));
+		packetBuffer->isFull = 1;
+		packetBuffer->ptr = sendingPacketCopy;
+		s->windowBuffer[positionInArray] = packetBuffer;
 		conn_sendpkt(s->c, &s->sender.packet, s->sender.packet.len);
 	} else {
 		//you got an error
@@ -216,6 +235,7 @@ void rel_output(rel_t *r) {
 	 */
 	if (availableSpace >= r->receiver.packet.len
 			&& r->receiver.packet.len > 0) {
+		//REMEMBER TO FREE THE PACKET MEMORY AND MARK THAT THE LOCATION IN THE ARRAY IS FREE
 		int bytes_written = conn_output(r->c, r->receiver.packet.data,
 				r->receiver.packet.len);
 		r->receiver.last_frame_received++; //by outputting the data, you have proved you have received the packet
