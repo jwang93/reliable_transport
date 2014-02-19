@@ -185,7 +185,7 @@ void preparePacketForSending(packet_t *pkt) {
 
 void rel_read(rel_t *s) {
 	/* Gets input from conn_input, which I believe gets input from STDIN */
-	int positionInArray = (s->sender->last_frame_sent + 1) % s->sender.send_window_size;
+	int positionInArray = (s->sender.last_frame_sent + 1) % s->sender.send_window_size;
 	int data_size = 0;
 	if(s->windowBuffer[positionInArray].isFull == 0) {
 		//only get the data if there is room in the buffer
@@ -207,12 +207,12 @@ void rel_read(rel_t *s) {
 		debugger("rel_read for sender", &(s->sender.packet));
 		debugger("rel_read for receiver", &(s->receiver.packet));
 		preparePacketForSending(&(s->sender.packet));
-		struct packet_t *sendingPacketCopy = malloc(sizeof packet_t);
-		memcpy(sendingPacketCopy, s->sender.packet, sizeof s->sender.packet);
-		struct WindowBuffer packetBuffer = malloc(sizeof (struct WindowBuffer));
+		packet_t *sendingPacketCopy = malloc(sizeof s->sender.packet);
+		memcpy(sendingPacketCopy, &s->sender.packet, sizeof s->sender.packet);
+		struct WindowBuffer *packetBuffer = malloc(sizeof (struct WindowBuffer));
 		packetBuffer->isFull = 1;
 		packetBuffer->ptr = sendingPacketCopy;
-		s->windowBuffer[positionInArray] = packetBuffer;
+		s->windowBuffer[positionInArray] = *packetBuffer;
 		conn_sendpkt(s->c, &s->sender.packet, s->sender.packet.len);
 	} else {
 		//you got an error
