@@ -18,14 +18,12 @@
 #define ACK_PACKET_HEADER 8
 #define DATA_PACKET_HEADER 12
 
-//need some abstraction to represent the sender
 struct Sender {
-	int send_window_size; //How do we know how large the SWS is?
+	int send_window_size; 
 	int last_frame_sent;
 	packet_t packet;
 };
 
-//need some abstraction to represent the receiver
 struct Receiver {
 	int largest_acceptable_seqno;   //going to be needed once we have a RWS/SWS
 	int last_frame_received;
@@ -38,11 +36,6 @@ struct WindowBuffer {
 	int timeStamp;
 };
 
-/*
- Ideally, the sender and receiver should not be in the reliable_state struct. They should be their own
- entities. However, because all the signatures are programmed to accept only rel_T, we thought that it would
- be most convenient to include sender/receiver in the reliable_state struct.
- */
 
 /* reliable_state type is the main data structure that holds all the crucial information for this lab */
 struct reliable_state {
@@ -64,7 +57,7 @@ void initialize(rel_t *r, int windowSize) {
 	r->sender.packet.len = 0;
 	r->sender.packet.ackno = 1;
 	r->sender.packet.seqno = 0;
-	r->sender.last_frame_sent = 0;
+	r->sender.last_frame_sent = -1;
 	r->sender.packet.data[500] = '\0';//trying to initialize sender packet data
 	r->sender.send_window_size = windowSize;
 
@@ -177,7 +170,7 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 void preparePacketForSending(packet_t *pkt) {
 	int packetLength = pkt->len;
-	pkt->ackno = htons(pkt->len);
+	pkt->ackno = htons(pkt->ackno);
 	pkt->len = htons(pkt->len);
 	if (pkt->len >= DATA_PACKET_HEADER) {
 		pkt->seqno = htonl(pkt->seqno);
@@ -203,24 +196,36 @@ void rel_read(rel_t *s) {
 	
 	if (data_size == 0) {
 		return;
-	} else if (data_size > 0) {
-		s->sender.packet.len = data_size + DATA_PACKET_HEADER;
+	} 
+
+	else if (data_size > 0) {
+
 		s->sender.last_frame_sent++;
+
+		s->sender.packet.len = data_size + DATA_PACKET_HEADER;
 		s->sender.packet.seqno = s->sender.last_frame_sent;
 		s->sender.packet.ackno = s->sender.packet.seqno + 1; //ackno should always be 1 higher than seqno
 		s->sender.packet.cksum = cksum(&s->sender.packet, s->sender.packet.len);
+
+
 		debugger("rel_read for sender", &(s->sender.packet));
 		debugger("rel_read for receiver", &(s->receiver.packet));
+
 		preparePacketForSending(&(s->sender.packet));
+
 		packet_t *sendingPacketCopy = malloc(sizeof s->sender.packet);
 		memcpy(sendingPacketCopy, &s->sender.packet, sizeof s->sender.packet);
+		
 		struct WindowBuffer *packetBuffer = malloc(sizeof (struct WindowBuffer));
 		packetBuffer->isFull = 1;
 		packetBuffer->ptr = sendingPacketCopy;
 		packetBuffer->timeStamp = 0;	//will need to change later
+		
 		s->windowBuffer[positionInArray] = *packetBuffer;
 		conn_sendpkt(s->c, &s->sender.packet, s->sender.packet.len);
-	} else {
+	} 
+
+	else {
 		//you got an error
 	}
 
