@@ -162,25 +162,30 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 	int positionInArray = (pkt->seqno % r->sender.send_window_size)
 			+ r->sender.send_window_size;
-	if (r->windowBuffer[positionInArray].isFull == 1) {
+	if (r->windowBuffer[positionInArray].isFull == 1 && pkt->len != ACK_PACKET_HEADER) {
 		//drop packet
 		fprintf(stderr, "packet is dropped!!! \n");
 		fprintf(stderr, "position in array when dropped is %i \n",
 				positionInArray);
 		return;
 	}
-	packet_t *receivingPacketCopy = malloc(sizeof pkt);
-	memcpy(receivingPacketCopy, pkt, sizeof pkt);
-	struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
-	packetBuffer->isFull = 1;
-	packetBuffer->ptr = pkt;
-	packetBuffer->timeStamp = 0;	//will need to change later
-	r->windowBuffer[positionInArray] = *packetBuffer;
+	if(pkt->len != ACK_PACKET_HEADER) {
+		packet_t *receivingPacketCopy = malloc(sizeof pkt);
+		memcpy(receivingPacketCopy, pkt, sizeof pkt);
+		struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
+		packetBuffer->isFull = 1;
+		packetBuffer->ptr = pkt;
+		packetBuffer->timeStamp = 0;	//will need to change later
+		r->windowBuffer[positionInArray] = *packetBuffer;
+	}
 
 	//Case when pkt is ACK or DATA
 	if (pkt->len == ACK_PACKET_HEADER) {
 		//REMEMBER TO FREE THE PACKET MEMORY AND MARK THAT THE LOCATION IN THE ARRAY IS FREE
 		fprintf(stderr, "THERE WAS AN ACK PACKET RECEIVED!!!!!!!! \n");
+		int pos = (pkt->ackno - 1) % r->sender.send_window_size;
+		free(r->windowBuffer[pos].ptr);
+		r->windowBuffer[pos].isFull = 0;
 	}
 	if (pkt->len >= DATA_PACKET_HEADER) {
 		r->receiver.last_frame_received = pkt->seqno;
@@ -188,6 +193,7 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 		packet_t *ackPacket = malloc(sizeof pkt->len);	//probably should be sizeof packet_t, but C won't let me do this
 		ackPacket->len = ACK_PACKET_HEADER;
+		ackPacket->ackno = pkt->ackno;
 		preparePacketForSending(ackPacket);
 		conn_sendpkt(r->c, ackPacket, ackPacket->len);
 	}
