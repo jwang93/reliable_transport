@@ -181,6 +181,9 @@ void rel_read(rel_t *s) {
 
 	int data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
 
+	//need to check sender window and see if full 
+	//make an array of packets 3 or 4 times the size of the window 
+	
 	if (data_size == 0) {
 		return;
 	} else if (data_size > 0) {

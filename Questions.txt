@@ -31,3 +31,15 @@ Questions
 7.  Why is ackno stored in the sender's data packet?
 
 8.  How are we supposed to use op in print_pkt?
+
+
+
+Office Hours TA:
+
+you may need to send packets if you get a time_out, input, or ack 
+	create a helper send_all() that will take care of all the packets that need to be sent 
+		call conn_sendpkt in send_all() 
+
+
+Big Array of all pointers to packets 
+	-> you create the packet so you know where the address is 
