@@ -131,12 +131,11 @@ void debugger(char* function_name, packet_t *pkt) {
 }
 void preparePacketForSending(packet_t *pkt) {
 	int packetLength = pkt->len;
-	pkt->ackno = htons(pkt->len);
+	pkt->ackno = htons(pkt->ackno);
 	pkt->len = htons(pkt->len);
 	if (packetLength >= DATA_PACKET_HEADER) {
 		pkt->seqno = htons(pkt->seqno);
 	}
-	pkt->cksum = 0;
 	pkt->cksum = cksum(pkt, packetLength);
 }
 void convertPacketToNetworkByteOrder(packet_t *pkt) {
@@ -166,7 +165,7 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 	if (r->windowBuffer[positionInArray].isFull == 1) {
 		//drop packet
 		fprintf(stderr, "packet is dropped!!! \n");
-		fprintf(stderr, "position in array when dropped is %i",
+		fprintf(stderr, "position in array when dropped is %i \n",
 				positionInArray);
 		return;
 	}
@@ -179,13 +178,18 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 	r->windowBuffer[positionInArray] = *packetBuffer;
 
 	//Case when pkt is ACK or DATA
-	if (pkt->len >= ACK_PACKET_HEADER) {
+	if (pkt->len == ACK_PACKET_HEADER) {
 		//REMEMBER TO FREE THE PACKET MEMORY AND MARK THAT THE LOCATION IN THE ARRAY IS FREE
-
+		fprintf(stderr, "THERE WAS AN ACK PACKET RECEIVED!!!!!!!! \n");
 	}
 	if (pkt->len >= DATA_PACKET_HEADER) {
+		r->receiver.last_frame_received = pkt->seqno;
 		rel_output(r);
-		//send ack
+
+		packet_t *ackPacket = malloc(sizeof pkt->len);	//probably should be sizeof packet_t, but C won't let me do this
+		ackPacket->len = ACK_PACKET_HEADER;
+		preparePacketForSending(ackPacket);
+		conn_sendpkt(r->c, ackPacket, ackPacket->len);
 	}
 
 }
@@ -241,6 +245,10 @@ void rel_read(rel_t *s) {
 	}
 
 }
+int firstSeqNoToPrint(int seqno, rel_t *r) {
+	int positionInArray = (seqno % r->sender.send_window_size) + r->sender.send_window_size;
+	return -1;	//FILL THIS FUNCTION IN LATER
+}
 
 void rel_output(rel_t *r) {
 	//first get size available in connection's buffer space
@@ -248,21 +256,15 @@ void rel_output(rel_t *r) {
 	//pass in the available buffer space available to conn_output (or less if message is smaller)
 	//get result
 	int availableSpace = conn_bufspace(r->c);
-	fprintf(stderr, "available bufferspace for printing is: %i \n",
-			availableSpace);
-	fprintf(stderr, "receiver packet length is %i \n", r->receiver.packet.len);
-	/* TWO Checls
-	 1. enough available space
-	 2. making sure the receiver data is not empty
-	 */
-	if (availableSpace >= r->receiver.packet.len
-			&& r->receiver.packet.len > 0) {
+	int seqno = firstSeqNoToPrint(r->receiver.last_frame_received, r);
+	if (availableSpace >= r->receiver.packet.len && r->receiver.packet.len > 0) {
 
-		int bytes_written = conn_output(r->c, r->receiver.packet.data,
-				r->receiver.packet.len);
-		r->receiver.last_frame_received++; //by outputting the data, you have proved you have received the packet
+		conn_output(r->c, r->receiver.packet.data, r->receiver.packet.len);
 		r->receiver.packet.len = 0;
 		memset(&r->receiver.packet, 0, sizeof(&r->receiver.packet));
+		int positionInArray = (r->receiver.packet.seqno % r->sender.send_window_size) + r->sender.send_window_size;
+//		free(r->windowBuffer[positionInArray].ptr);
+		r->windowBuffer[positionInArray].isFull = 0;
 	}
 
 	/* send ack packet back to receiver */
