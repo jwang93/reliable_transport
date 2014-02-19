@@ -35,6 +35,7 @@ struct Receiver {
 struct WindowBuffer {
 	packet_t* ptr;
 	int isFull;		//0 is for empty, 1 is for full
+	int timeStamp;
 };
 
 /*
@@ -104,7 +105,7 @@ rel_create(conn_t *c, const struct sockaddr_storage *ss,
 
 	/* Do any other initialization you need here */
 
-	initialize(r, &cc->window);
+	initialize(r, cc->window);
 
 	return r;
 }
@@ -137,6 +138,8 @@ void debugger(char* function_name, packet_t *pkt) {
 }
 
 void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
+	//REMEMBER TO FREE THE PACKET MEMORY AND MARK THAT THE LOCATION IN THE ARRAY IS FREE
+
 	debugger("rel_recvpkt", pkt);
 	int checksum = pkt->cksum;
 	int compare_checksum = cksum(pkt->data, n);
@@ -186,6 +189,7 @@ void preparePacketForSending(packet_t *pkt) {
 void rel_read(rel_t *s) {
 	/* Gets input from conn_input, which I believe gets input from STDIN */
 	int positionInArray = (s->sender.last_frame_sent + 1) % s->sender.send_window_size;
+	fprintf(stderr, "window size is: %i", s->sender.send_window_size);
 	int data_size = 0;
 	if(s->windowBuffer[positionInArray].isFull == 0) {
 		//only get the data if there is room in the buffer
@@ -204,6 +208,7 @@ void rel_read(rel_t *s) {
 		s->sender.last_frame_sent++;
 		s->sender.packet.seqno = s->sender.last_frame_sent;
 		s->sender.packet.ackno = s->sender.packet.seqno + 1; //ackno should always be 1 higher than seqno
+		s->sender.packet.cksum = cksum(&s->sender.packet, s->sender.packet.len);
 		debugger("rel_read for sender", &(s->sender.packet));
 		debugger("rel_read for receiver", &(s->receiver.packet));
 		preparePacketForSending(&(s->sender.packet));
@@ -212,6 +217,7 @@ void rel_read(rel_t *s) {
 		struct WindowBuffer *packetBuffer = malloc(sizeof (struct WindowBuffer));
 		packetBuffer->isFull = 1;
 		packetBuffer->ptr = sendingPacketCopy;
+		packetBuffer->timeStamp = 0;	//will need to change later
 		s->windowBuffer[positionInArray] = *packetBuffer;
 		conn_sendpkt(s->c, &s->sender.packet, s->sender.packet.len);
 	} else {
@@ -235,7 +241,7 @@ void rel_output(rel_t *r) {
 	 */
 	if (availableSpace >= r->receiver.packet.len
 			&& r->receiver.packet.len > 0) {
-		//REMEMBER TO FREE THE PACKET MEMORY AND MARK THAT THE LOCATION IN THE ARRAY IS FREE
+
 		int bytes_written = conn_output(r->c, r->receiver.packet.data,
 				r->receiver.packet.len);
 		r->receiver.last_frame_received++; //by outputting the data, you have proved you have received the packet
