@@ -43,3 +43,7 @@ you may need to send packets if you get a time_out, input, or ack
 
 Big Array of all pointers to packets 
 	-> you create the packet so you know where the address is 
+
+NOTE: SEQNO has 32 bits,
+NOTE: We should make an array of length window size.  The position in the array of a packet will be seqno mod window size
+
