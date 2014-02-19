@@ -19,7 +19,7 @@
 #define DATA_PACKET_HEADER 12
 
 struct Sender {
-	int send_window_size; 
+	int send_window_size;
 	int last_frame_sent;
 	packet_t packet;
 };
@@ -35,7 +35,6 @@ struct WindowBuffer {
 	int isFull;		//0 is for empty, 1 is for full
 	int timeStamp;
 };
-
 
 /* reliable_state type is the main data structure that holds all the crucial information for this lab */
 struct reliable_state {
@@ -58,7 +57,7 @@ void initialize(rel_t *r, int windowSize) {
 	r->sender.packet.ackno = 1;
 	r->sender.packet.seqno = 0;
 	r->sender.last_frame_sent = -1;
-	r->sender.packet.data[500] = '\0';//trying to initialize sender packet data
+	r->sender.packet.data[500] = '\0'; //trying to initialize sender packet data
 	r->sender.send_window_size = windowSize;
 	r->receiver.packet.cksum = 0;
 	r->receiver.packet.len = 0;
@@ -125,12 +124,28 @@ void rel_demux(const struct config_common *cc,
 
 void debugger(char* function_name, packet_t *pkt) {
 
-	fprintf(stderr, "DEBUGGER:: Function Name: %s, Data: %s\n cksum:%x, len:%d, ackno:%d, seqno:%d \n\n",
-			function_name, pkt->data, pkt->cksum, pkt->len, pkt->ackno, pkt->seqno);
+	fprintf(stderr,
+			"DEBUGGER:: Function Name: %s, Data: %s\n cksum:%x, len:%d, ackno:%d, seqno:%d \n\n",
+			function_name, pkt->data, pkt->cksum, pkt->len, pkt->ackno,
+			pkt->seqno);
+}
+void preparePacketForSending(packet_t *pkt) {
+	int packetLength = pkt->len;
+	pkt->ackno = htons(pkt->len);
+	pkt->len = htons(pkt->len);
+	if (packetLength >= DATA_PACKET_HEADER) {
+		pkt->seqno = htons(pkt->seqno);
+	}
+	pkt->cksum = 0;
+	pkt->cksum = cksum(pkt, packetLength);
+}
+void convertPacketToNetworkByteOrder(packet_t *pkt) {
+	pkt->len = ntohs(pkt->len);
+	pkt->ackno = ntohs(pkt->ackno);
+	pkt->seqno = ntohs(pkt->seqno);
 }
 
 void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
-	//REMEMBER TO FREE THE PACKET MEMORY AND MARK THAT THE LOCATION IN THE ARRAY IS FREE
 
 	debugger("rel_recvpkt", pkt);
 	int checksum = pkt->cksum;
@@ -139,43 +154,40 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 	if (compare_checksum != checksum) {
 		/* We have an error. Discard the packet. It is corrupted. */
 	}
+	convertPacketToNetworkByteOrder(pkt);
+	fprintf(stderr, "in receiving, seqno is %i, length is %i \n", pkt->seqno,
+			pkt->len);
 
-	/* going to have to determine what type of packet we have
-	 couple options:
-	 ack packet only 8 bytes
-	 data packet
-	 */
-	pkt->len = ntohs(pkt->len); //pkt->len comes in the type of uint16_t
-	fprintf(stderr, "in rel_recvpkt, packet size received is %i \n", pkt->len);
-	r->receiver.packet = *pkt;//had to set the receiver packet to pkt somehow but seems hacky.
-							  //without setting it here, rel_output doesn't have the received packet
+	r->receiver.packet = *pkt; //had to set the receiver packet to pkt somehow but seems hacky.
+							   //without setting it here, rel_output doesn't have the received packet
+
+	int positionInArray = (pkt->seqno % r->sender.send_window_size)
+			+ r->sender.send_window_size;
+	if (r->windowBuffer[positionInArray].isFull == 1) {
+		//drop packet
+		fprintf(stderr, "packet is dropped!!! \n");
+		fprintf(stderr, "position in array when dropped is %i",
+				positionInArray);
+		return;
+	}
+	packet_t *receivingPacketCopy = malloc(sizeof pkt);
+	memcpy(receivingPacketCopy, pkt, sizeof pkt);
+	struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
+	packetBuffer->isFull = 1;
+	packetBuffer->ptr = pkt;
+	packetBuffer->timeStamp = 0;	//will need to change later
+	r->windowBuffer[positionInArray] = *packetBuffer;
 
 	//Case when pkt is ACK or DATA
 	if (pkt->len >= ACK_PACKET_HEADER) {
+		//REMEMBER TO FREE THE PACKET MEMORY AND MARK THAT THE LOCATION IN THE ARRAY IS FREE
 
-
-		/*
-		 If the packet is an ack_packet or data_packet, read the packet
-		 */
 	}
 	if (pkt->len >= DATA_PACKET_HEADER) {
 		rel_output(r);
-		/*
-		 If the packet is a data_packet, output the packet to the console through conn_output
-		 */
+		//send ack
 	}
 
-}
-
-void preparePacketForSending(packet_t *pkt) {
-	int packetLength = pkt->len;
-	pkt->ackno = htons(pkt->ackno);
-	pkt->len = htons(pkt->len);
-	if (pkt->len >= DATA_PACKET_HEADER) {
-		pkt->seqno = htonl(pkt->seqno);
-	}
-	pkt->cksum = 0;
-	pkt->cksum = cksum(pkt, packetLength);
 }
 
 void rel_read(rel_t *s) {
@@ -183,7 +195,9 @@ void rel_read(rel_t *s) {
 	int positionInArray = (s->sender.last_frame_sent + 1) % s->sender.send_window_size;
 	fprintf(stderr, "window size is: %i \n", s->sender.send_window_size);
 	int data_size = 0;
-	if(s->windowBuffer[positionInArray].isFull == 0) {
+	fprintf(stderr, "windowBuffer isFull value %i \n", s->windowBuffer[positionInArray].isFull);
+
+	if (s->windowBuffer[positionInArray].isFull == 0) {
 		//only get the data if there is room in the buffer
 		data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
 	} else {
@@ -192,10 +206,10 @@ void rel_read(rel_t *s) {
 
 	//need to check sender window and see if full 
 	//make an array of packets 3 or 4 times the size of the window 
-	
+
 	if (data_size == 0) {
 		return;
-	} 
+	}
 
 	else if (data_size > 0) {
 
@@ -206,26 +220,21 @@ void rel_read(rel_t *s) {
 		s->sender.packet.ackno = s->sender.packet.seqno + 1; //ackno should always be 1 higher than seqno
 		s->sender.packet.cksum = cksum(&s->sender.packet, s->sender.packet.len);
 
-
 		debugger("rel_read for sender", &(s->sender.packet));
-		debugger("rel_read for receiver", &(s->receiver.packet));
 
 		preparePacketForSending(&(s->sender.packet));
 
 		packet_t *sendingPacketCopy = malloc(sizeof s->sender.packet);
 		memcpy(sendingPacketCopy, &s->sender.packet, sizeof s->sender.packet);
-		
-		struct WindowBuffer *packetBuffer = malloc(sizeof (struct WindowBuffer));
+
+		struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
 		packetBuffer->isFull = 1;
 		packetBuffer->ptr = sendingPacketCopy;
 		packetBuffer->timeStamp = 0;	//will need to change later
-
-		fprintf(stderr, "size of the window buffer is: %i \n", sizeof(&s->windowBuffer));
-		
 		s->windowBuffer[positionInArray] = *packetBuffer;
 		conn_sendpkt(s->c, &s->sender.packet, s->sender.packet.len);
 		memset(&s->sender.packet, 0, sizeof(&s->sender.packet));
-	} 
+	}
 
 	else {
 		//you got an error
@@ -253,7 +262,7 @@ void rel_output(rel_t *r) {
 				r->receiver.packet.len);
 		r->receiver.last_frame_received++; //by outputting the data, you have proved you have received the packet
 		r->receiver.packet.len = 0;
-
+		memset(&r->receiver.packet, 0, sizeof(&r->receiver.packet));
 	}
 
 	/* send ack packet back to receiver */
