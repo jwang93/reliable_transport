@@ -129,6 +129,27 @@ void debugger(char* function_name, packet_t *pkt) {
 			function_name, pkt->data, pkt->cksum, pkt->len, pkt->ackno,
 			pkt->seqno);
 }
+
+//if type = 0, print sender buffer, else print receiver buffer
+void printBuffers(rel_t *r) {
+	int i;
+	int length = 2 * r->sender.send_window_size;
+
+	fprintf(stderr, "\n");
+	for (i = 0; i < length/2; i++) {
+		fprintf(stderr, "[%i] = %i, ", i, r->windowBuffer[i].isFull);
+	}
+	fprintf(stderr, " SENDER BUFFER. \n");
+
+	for (i = length/2; i < length; i++) {
+		int pos = i%r->sender.send_window_size;
+		fprintf(stderr, "[%i] = %i, ", pos, r->windowBuffer[i].isFull);
+	}
+	fprintf(stderr, " RECEIVER BUFFER. \n");
+	fprintf(stderr, "\n");
+
+}
+
 void preparePacketForSending(packet_t *pkt) {
 	int packetLength = pkt->len;
 	pkt->ackno = htons(pkt->ackno);
@@ -143,6 +164,8 @@ void convertPacketToNetworkByteOrder(packet_t *pkt) {
 	pkt->ackno = ntohs(pkt->ackno);
 	pkt->seqno = ntohs(pkt->seqno);
 }
+
+
 
 void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
@@ -162,6 +185,8 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 	int positionInArray = (pkt->seqno % r->sender.send_window_size)
 			+ r->sender.send_window_size;
+
+	//if it is full AND it is not an ackpacket
 	if (r->windowBuffer[positionInArray].isFull == 1 && pkt->len != ACK_PACKET_HEADER) {
 		//drop packet
 		fprintf(stderr, "packet is dropped!!! \n");
@@ -169,6 +194,7 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 				positionInArray);
 		return;
 	}
+
 	if(pkt->len != ACK_PACKET_HEADER) {
 		packet_t *receivingPacketCopy = malloc(sizeof pkt);
 		memcpy(receivingPacketCopy, pkt, sizeof pkt);
@@ -178,6 +204,8 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		packetBuffer->timeStamp = 0;	//will need to change later
 		r->windowBuffer[positionInArray] = *packetBuffer;
 	}
+
+	printBuffers(r);
 
 	//Case when pkt is ACK or DATA
 	if (pkt->len == ACK_PACKET_HEADER) {
@@ -249,6 +277,7 @@ void rel_read(rel_t *s) {
 	else {
 		//you got an error
 	}
+	printBuffers(s);
 
 }
 int firstSeqNoToPrint(int seqno, rel_t *r) {
@@ -269,7 +298,7 @@ void rel_output(rel_t *r) {
 		r->receiver.packet.len = 0;
 		memset(&r->receiver.packet, 0, sizeof(&r->receiver.packet));
 		int positionInArray = (r->receiver.packet.seqno % r->sender.send_window_size) + r->sender.send_window_size;
-//		free(r->windowBuffer[positionInArray].ptr);
+		free(r->windowBuffer[positionInArray].ptr);
 		r->windowBuffer[positionInArray].isFull = 0;
 	}
 
