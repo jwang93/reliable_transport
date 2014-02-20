@@ -45,7 +45,7 @@ struct reliable_state {
 	/* Add your own data fields below this */
 	struct Sender sender;
 	struct Receiver receiver;
-	struct WindowBuffer windowBuffer[];
+	struct WindowBuffer windowBuffer[10];
 
 };
 rel_t *rel_list; //rel_t is a type of reliable state
@@ -65,6 +65,9 @@ void initialize(rel_t *r, int windowSize) {
 	r->receiver.packet.seqno = 0;		//should this seqno be = 1?
 	r->receiver.last_frame_received = 0;
 	r->receiver.packet.data[500] = '\0';//trying to initialize receiver packet data
+
+	memset(&r->windowBuffer, 0, sizeof(&r->windowBuffer));
+
 }
 
 /* Creates a new reliable protocol session, returns NULL on failure.
@@ -212,7 +215,7 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		//REMEMBER TO FREE THE PACKET MEMORY AND MARK THAT THE LOCATION IN THE ARRAY IS FREE
 		fprintf(stderr, "THERE WAS AN ACK PACKET RECEIVED!!!!!!!! \n");
 		int pos = (pkt->ackno - 1) % r->sender.send_window_size;
-		free(r->windowBuffer[pos].ptr);
+		//free(r->windowBuffer[pos].ptr);
 		r->windowBuffer[pos].isFull = 0;
 	}
 	if (pkt->len >= DATA_PACKET_HEADER) {
@@ -298,8 +301,8 @@ void rel_output(rel_t *r) {
 		r->receiver.packet.len = 0;
 		memset(&r->receiver.packet, 0, sizeof(&r->receiver.packet));
 		int positionInArray = (r->receiver.packet.seqno % r->sender.send_window_size) + r->sender.send_window_size;
-		free(r->windowBuffer[positionInArray].ptr);
-		r->windowBuffer[positionInArray].isFull = 0;
+		//free(r->windowBuffer[positionInArray].ptr);
+		//r->windowBuffer[positionInArray].isFull = 0;
 	}
 
 	/* send ack packet back to receiver */
