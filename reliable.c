@@ -46,7 +46,7 @@ struct reliable_state {
 	/* Add your own data fields below this */
 	struct Sender sender;
 	struct Receiver receiver;
-	struct WindowBuffer windowBuffer[];
+	struct WindowBuffer *windowBuffer;
 
 };
 rel_t *rel_list; //rel_t is a type of reliable state
@@ -60,6 +60,9 @@ void initialize(rel_t *r, int windowSize) {
 	r->sender.last_frame_sent = -1;
 	r->sender.packet.data[500] = '\0';//trying to initialize sender packet data
 	r->sender.send_window_size = windowSize;
+
+	r->windowBuffer = malloc(windowSize * sizeof(*windowBuffer));
+	r->windowBuffer+5 5[r->windowBuffer]
 
 	r->receiver.packet.cksum = 0;
 	r->receiver.packet.len = 0;
