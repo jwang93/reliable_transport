@@ -45,7 +45,7 @@ struct reliable_state {
 	/* Add your own data fields below this */
 	struct Sender sender;
 	struct Receiver receiver;
-	struct WindowBuffer windowBuffer[10];
+	struct WindowBuffer windowBuffer[20];
 
 };
 rel_t *rel_list; //rel_t is a type of reliable state
