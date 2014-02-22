@@ -1,49 +1,5 @@
-Questions
+TODO: 
 
-1. In rel_recvpkt (rel_t *r, packet_t *pkt, size_t n), this refers to the receiver receiving the packet from the sender or the sender receiving some sort of acknowledge from the receiver? Or both?
+1. Figure out how to creat a pointer to an array... Hongze will probably have to help with this one. I am baffled. 
 
-	Could be both... If you got an ack packet, it must have come from the receiver to the sender. Wouldn't make sense any other way.
-
-2. In our program, which process is the receiver and the sender? My guess is that what process you type the input in, that is the sender and the other process is the receiver. Does that mean the sender and receiver can change over the course of a program...? Not too sure whether we need to even understand this detail.
---Jay, I think you're correct about the which the sender and the receiver are.  And I do think that either process can be the sender or the receiver.  From the lab:  "This means you don't need to handle demultiplex traffic at server side in server/client mode. In the first mode, one reliable transport layer should include both the sender component and receiver component. Correspondingly, one reliable connection bewteen two processes will support two-way data transmission simultaneously and asynchronously."
-
-3. In rel_output, where is the buffer stored?  I need to pass it in to the conn_output function.
-
-
-4. Where in the code is the distinction made between ack_packet and real packet? It looks like they are essentially the same. Do I need to store an ack_packet in the receiver? Only the receiver sends ack_packets to the sender right?
-
-
-5. Need to write out the order of how things get updated.
-
-1) sender sends packet
-	- last_frame_sent++
-	- conn_sendpkt() called
-
-2) receiver receives packet
-	- rel_recv() called
-	- conn_input() called to read the packet
-	- conn_output() called to write the packet data
-	- last_frame_received = packet.sequenceNumber
-	-
-
-6.  How are we supposed to store window size?
-
-7.  Why is ackno stored in the sender's data packet?
-
-8.  How are we supposed to use op in print_pkt?
-
-
-
-Office Hours TA:
-
-you may need to send packets if you get a time_out, input, or ack 
-	create a helper send_all() that will take care of all the packets that need to be sent 
-		call conn_sendpkt in send_all() 
-
-
-Big Array of all pointers to packets 
-	-> you create the packet so you know where the address is 
-
-NOTE: SEQNO has 32 bits,
-NOTE: We should make an array of length window size.  The position in the array of a packet will be seqno mod window size
-
+2. How does rel_timer() work if it doesn't take anything as a parameter? 
