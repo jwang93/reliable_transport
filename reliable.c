@@ -159,27 +159,29 @@ void preparePacketForSending(packet_t *pkt) {
 	if (packetLength >= DATA_PACKET_HEADER) {
 		pkt->seqno = htons(pkt->seqno);
 	}
-	pkt->cksum = cksum(pkt, packetLength);
+	pkt->cksum = htons(cksum(pkt->data, packetLength));
 }
 void convertPacketToNetworkByteOrder(packet_t *pkt) {
 	pkt->len = ntohs(pkt->len);
 	pkt->ackno = ntohs(pkt->ackno);
 	pkt->seqno = ntohs(pkt->seqno);
+	pkt->cksum = ntohs(pkt->cksum);
 }
 
 
 
 void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
+	convertPacketToNetworkByteOrder(pkt);
+
 	debugger("rel_recvpkt", pkt);
 	int checksum = pkt->cksum;
-	int compare_checksum = cksum(pkt->data, n);
+	int compare_checksum = cksum(pkt->data, pkt->len);
 
 	if (compare_checksum != checksum) {
 		fprintf(stderr, "Checksums do not match. Packet corruption. Kill Connection. \n");
-		//return;
+		return;
 	}
-	convertPacketToNetworkByteOrder(pkt);
 	fprintf(stderr, "in receiving, seqno is %i, length is %i \n", pkt->seqno,
 			pkt->len);
 
