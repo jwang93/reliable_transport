@@ -51,6 +51,7 @@ struct reliable_state {
 
 };
 rel_t *rel_list; //rel_t is a type of reliable state
+int allow = 0;
 
 void initialize(rel_t *r, int windowSize) {
 
@@ -156,13 +157,6 @@ void printBuffers(rel_t *r) {
 
 }
 
-// This method retransmits the packet w/ given seqno
-void retransmit(rel_t *r, int seqno) {
-	struct WindowBuffer *packet = &r->windowBuffer[seqno];
-	printBuffers(r);
-	fprintf(stderr, "You want to retransmit packet w/ seqno: %i and data: %s", packet->ptr->seqno, packet->ptr->data);
-}
-
 void preparePacketForSending(packet_t *pkt) {
 	int packetLength = pkt->len;
 	pkt->ackno = htons(pkt->ackno);
@@ -179,14 +173,29 @@ void convertPacketToNetworkByteOrder(packet_t *pkt) {
 	pkt->cksum = ntohs(pkt->cksum);
 }
 
+// This method retransmits the packet w/ given seqno
+void retransmit(rel_t *s, int seqno) {
+	struct WindowBuffer *packet = &s->windowBuffer[seqno];
+	printBuffers(s);
+//	convertPacketToNetworkByteOrder(packet->ptr); //confirmed that this packet is correct
 
+	conn_sendpkt(s->c, packet->ptr, packet->ptr->len);
+//	fprintf(stderr, "You want to retransmit packet w/ seqno: %i and data: %s", packet->ptr->seqno, packet->ptr->data);
+}
+
+void compute_LFR(int seqno) {
+	/*PREMISE: you just received this seqno, what should the last_frame_received be?
+	 *
+	 */
+}
 
 void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 	convertPacketToNetworkByteOrder(pkt);
 //	debugger("rel_recvpkt", pkt);
 
-	if (pkt->seqno == 1) {
+	if (pkt->seqno == 1 && allow == 0) {
+		allow = 1;
 		return;
 	}
 
@@ -200,6 +209,7 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 //	fprintf(stderr, "in receiving, seqno is %i, length is %i \n", pkt->seqno, pkt->len);
 
 	if (r->receiver.last_frame_received == pkt->seqno) {
+//		r->receiver.last_frame_received = compute_LFR(pkt->seqno);
 		r->receiver.last_frame_received += 1;
 	}
 
@@ -291,7 +301,6 @@ void rel_read(rel_t *s) {
 
 		s->sender.packet.len = data_size + DATA_PACKET_HEADER;
 		s->sender.packet.seqno = s->sender.last_frame_sent;
-		fprintf(stderr, "seqno1: %i\n", s->sender.packet.seqno);
 		s->sender.expected_ack = s->sender.packet.seqno + 1;
 		s->sender.packet.ackno = s->sender.packet.seqno + 1; //ackno should always be 1 higher than seqno
 		s->sender.packet.cksum = cksum(&s->sender.packet, s->sender.packet.len);
@@ -306,7 +315,6 @@ void rel_read(rel_t *s) {
 		struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
 		packetBuffer->isFull = 1;
 		packetBuffer->ptr = sendingPacketCopy;
-		fprintf(stderr, "seqno2: %i\n", packetBuffer->ptr->seqno);
 		packetBuffer->timeStamp = 0;	//will need to change later
 		s->windowBuffer[positionInArray] = *packetBuffer;
 //		fprintf(stderr, "conn_sendpkt sent with data: %s", s->sender.packet.data);
