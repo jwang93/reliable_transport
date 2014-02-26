@@ -47,7 +47,9 @@ struct reliable_state {
 	/* Add your own data fields below this */
 	struct Sender sender;
 	struct Receiver receiver;
-	struct WindowBuffer windowBuffer[1000];
+	struct WindowBuffer senderWindowBuffer[1000];
+	struct WindowBuffer receiverWindowBuffer[1000];
+
 
 };
 rel_t *rel_list; //rel_t is a type of reliable state
@@ -71,7 +73,9 @@ void initialize(rel_t *r, int windowSize) {
 	r->receiver.packet.data[500] = '\0';//trying to initialize receiver packet data
 	r->receiver.ackno = 0;
 
-	memset(&r->windowBuffer, 0, sizeof(&r->windowBuffer));
+	memset(&r->senderWindowBuffer, 0, sizeof(&r->senderWindowBuffer));
+	memset(&r->receiverWindowBuffer, 0, sizeof(&r->receiverWindowBuffer));
+
 
 }
 
@@ -140,17 +144,15 @@ void debugger(char* function_name, packet_t *pkt) {
 
 void printBuffers(rel_t *r) {
 	int i;
-	int length = 2 * r->sender.send_window_size;
 
 	fprintf(stderr, "\n");
-	for (i = 0; i < length/2; i++) {
-		fprintf(stderr, "[%i] = %i, ", i, r->windowBuffer[i].isFull);
+	for (i = 0; i < r->sender.send_window_size; i++) {
+		fprintf(stderr, "[%i] = %i, ", i, r->senderWindowBuffer[i].isFull);
 	}
 	fprintf(stderr, " SENDER BUFFER. \n");
 
-	for (i = length/2; i < length; i++) {
-		int pos = i%r->sender.send_window_size;
-		fprintf(stderr, "[%i] = %i, ", pos, r->windowBuffer[i].isFull);
+	for (i = 0; i < r->sender.send_window_size; i++) {
+		fprintf(stderr, "[%i] = %i, ", i, r->receiverWindowBuffer[i].isFull);
 	}
 	fprintf(stderr, " RECEIVER BUFFER. \n");
 	fprintf(stderr, "\n");
@@ -175,7 +177,7 @@ void convertPacketToNetworkByteOrder(packet_t *pkt) {
 
 // This method retransmits the packet w/ given seqno
 void retransmit(rel_t *s, int seqno) {
-	struct WindowBuffer *packet = &s->windowBuffer[seqno];
+	struct WindowBuffer *packet = &s->senderWindowBuffer[seqno];
 	printBuffers(s);
 //	convertPacketToNetworkByteOrder(packet->ptr); //confirmed that this packet is correct
 
@@ -218,8 +220,6 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 
 
-	int positionInArray = (pkt->seqno % r->sender.send_window_size)
-			+ r->sender.send_window_size;
 
 //	if (r->windowBuffer[positionInArray].isFull == 1 && pkt->len != ACK_PACKET_HEADER) {
 //		fprintf(stderr, "Dropped the packet that should have been at position: %i \n", positionInArray);
@@ -233,7 +233,7 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		packetBuffer->isFull = 1;
 		packetBuffer->ptr = pkt;
 		packetBuffer->timeStamp = 0;	//will need to change later
-		r->windowBuffer[positionInArray] = *packetBuffer;
+		r->receiverWindowBuffer[pkt->seqno] = *packetBuffer;
 	}
 
 //	printBuffers(r);
@@ -285,7 +285,7 @@ void rel_read(rel_t *s) {
 
 	data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
 
-	if (s->windowBuffer[positionInArray].isFull == 0) {
+	if (s->senderWindowBuffer[positionInArray].isFull == 0) {
 	} else {
 //		fprintf(stderr, "\n Packet was not read because there is no space in the sender's window.\n");
 //		return;
@@ -316,7 +316,7 @@ void rel_read(rel_t *s) {
 		packetBuffer->isFull = 1;
 		packetBuffer->ptr = sendingPacketCopy;
 		packetBuffer->timeStamp = 0;	//will need to change later
-		s->windowBuffer[positionInArray] = *packetBuffer;
+		s->senderWindowBuffer[positionInArray] = *packetBuffer;
 //		fprintf(stderr, "conn_sendpkt sent with data: %s", s->sender.packet.data);
 		conn_sendpkt(s->c, &s->sender.packet, s->sender.packet.len);
 		memset(&s->sender.packet, 0, sizeof(&s->sender.packet));
