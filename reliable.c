@@ -45,7 +45,7 @@ struct reliable_state {
 	/* Add your own data fields below this */
 	struct Sender sender;
 	struct Receiver receiver;
-	struct WindowBuffer windowBuffer[20];
+	struct WindowBuffer windowBuffer[1000];
 
 };
 rel_t *rel_list; //rel_t is a type of reliable state
@@ -56,7 +56,7 @@ void initialize(rel_t *r, int windowSize) {
 	r->sender.packet.len = 0;
 	r->sender.packet.ackno = 1;
 	r->sender.packet.seqno = 0;
-	r->sender.last_frame_sent = -1;
+	r->sender.last_frame_sent = -1;   //makes sense because you want to start at 0
 	r->sender.packet.data[500] = '\0'; //trying to initialize sender packet data
 	r->sender.send_window_size = windowSize;
 	r->receiver.packet.cksum = 0;
@@ -282,6 +282,7 @@ void rel_read(rel_t *s) {
 	else {
 		//you got an error
 	}
+
 	printBuffers(s);
 
 }
@@ -309,5 +310,6 @@ void rel_output(rel_t *r) {
 
 void rel_timer() {
 	/* Retransmit any packets that need to be retransmitted */
+	rel_t *r = rel_list;
 
 }
