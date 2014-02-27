@@ -382,13 +382,11 @@ void rel_output(rel_t *r) {
 //	}
 
 	int availableSpace = conn_bufspace(r->c);
-	int seqno = firstSeqNoToPrint(r->receiver.last_frame_received, r);
 	if (availableSpace >= r->receiver.packet.len && r->receiver.packet.len > 0) {
-
+		fprintf(stderr, "Data: %s", r->receiver.packet.data);
 		conn_output(r->c, r->receiver.packet.data, r->receiver.packet.len);
 		r->receiver.packet.len = 0;
-		memset(&r->receiver.packet, 0, sizeof(&r->receiver.packet));
-		int positionInArray = (r->receiver.packet.seqno % r->windowSize) + r->windowSize;
+		memset(&r->receiver.packet.data, 0, sizeof(&r->receiver.packet.data));
 		//free(r->windowBuffer[positionInArray].ptr);
 //		r->windowBuffer[positionInArray].isFull = 0;
 	}
