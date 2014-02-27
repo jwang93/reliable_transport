@@ -19,14 +19,15 @@
 #define DATA_PACKET_HEADER 12
 
 struct Sender {
-	int send_window_size;
 	int last_frame_sent;
+	int expected_ack;
 	packet_t packet;
 };
 
 struct Receiver {
 	int largest_acceptable_seqno;   //going to be needed once we have a RWS/SWS
 	int last_frame_received;
+	int ackno;
 	packet_t packet;
 };
 
@@ -34,6 +35,8 @@ struct WindowBuffer {
 	packet_t* ptr;
 	int isFull;		//0 is for empty, 1 is for full
 	int timeStamp;
+	int acknowledged; //0 for no, 1 for yes
+	int outputted; //0 for no, 1 for yes
 };
 
 /* reliable_state type is the main data structure that holds all the crucial information for this lab */
@@ -45,10 +48,16 @@ struct reliable_state {
 	/* Add your own data fields below this */
 	struct Sender sender;
 	struct Receiver receiver;
-	struct WindowBuffer windowBuffer[20];
+	int windowSize;
+	struct WindowBuffer senderWindowBuffer[1000];
+	struct WindowBuffer receiverWindowBuffer[1000];
+
 
 };
 rel_t *rel_list; //rel_t is a type of reliable state
+int allow = 0;
+int allow2 = 0;
+int timestamp = 0;
 
 void initialize(rel_t *r, int windowSize) {
 
@@ -56,17 +65,20 @@ void initialize(rel_t *r, int windowSize) {
 	r->sender.packet.len = 0;
 	r->sender.packet.ackno = 1;
 	r->sender.packet.seqno = 0;
-	r->sender.last_frame_sent = -1;
+	r->sender.last_frame_sent = -1;   //makes sense because you want to start at 0
 	r->sender.packet.data[500] = '\0'; //trying to initialize sender packet data
-	r->sender.send_window_size = windowSize;
+	r->sender.expected_ack = 0;
 	r->receiver.packet.cksum = 0;
 	r->receiver.packet.len = 0;
 	r->receiver.packet.ackno = 1;
 	r->receiver.packet.seqno = 0;		//should this seqno be = 1?
 	r->receiver.last_frame_received = 0;
 	r->receiver.packet.data[500] = '\0';//trying to initialize receiver packet data
+	r->receiver.ackno = 0;
+	r->windowSize = windowSize;
+	memset(&r->senderWindowBuffer, 0, sizeof(&r->senderWindowBuffer));
+	memset(&r->receiverWindowBuffer, 0, sizeof(&r->receiverWindowBuffer));
 
-	memset(&r->windowBuffer, 0, sizeof(&r->windowBuffer));
 
 }
 
@@ -135,17 +147,15 @@ void debugger(char* function_name, packet_t *pkt) {
 
 void printBuffers(rel_t *r) {
 	int i;
-	int length = 2 * r->sender.send_window_size;
 
 	fprintf(stderr, "\n");
-	for (i = 0; i < length/2; i++) {
-		fprintf(stderr, "[%i] = %i, ", i, r->windowBuffer[i].isFull);
+	for (i = 0; i < r->windowSize; i++) {
+		fprintf(stderr, "[%i] = %i (F), %i (A), ", i, r->senderWindowBuffer[i].isFull, r->senderWindowBuffer[i].acknowledged);
 	}
 	fprintf(stderr, " SENDER BUFFER. \n");
 
-	for (i = length/2; i < length; i++) {
-		int pos = i%r->sender.send_window_size;
-		fprintf(stderr, "[%i] = %i, ", pos, r->windowBuffer[i].isFull);
+	for (i = 0; i < r->windowSize; i++) {
+		fprintf(stderr, "[%i] = %i, ", i, r->receiverWindowBuffer[i].isFull);
 	}
 	fprintf(stderr, " RECEIVER BUFFER. \n");
 	fprintf(stderr, "\n");
@@ -168,13 +178,48 @@ void convertPacketToNetworkByteOrder(packet_t *pkt) {
 	pkt->cksum = ntohs(pkt->cksum);
 }
 
+// This method retransmits the packet w/ given seqno
+void retransmit(rel_t *s, int seqno) {
+	struct WindowBuffer *packet = &s->senderWindowBuffer[seqno];
+//	printBuffers(s);
+//	convertPacketToNetworkByteOrder(packet->ptr); //confirmed that this packet is correct
 
+	conn_sendpkt(s->c, packet->ptr, packet->ptr->len);
+	memset(packet->ptr, 0, sizeof(packet->ptr));
+
+//	fprintf(stderr, "You want to retransmit packet w/ seqno: %i and data: %s", packet->ptr->seqno, packet->ptr->data);
+}
+
+int compute_LFR(rel_t* r) {
+	/*PREMISE: you just received this seqno, what should the last_frame_received be?
+	 *
+	 */
+	int i;
+	for (i = 0; i < r->windowSize; i++) { //might be too small...
+//		printBuffers(r);
+		if (r->receiverWindowBuffer[i].isFull == 0) {
+//			fprintf(stderr, "Return values from computeLFR: %i*****\n", i);
+			return i;
+		}
+	}
+	return -1; //should cause a seg fault
+}
 
 void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 	convertPacketToNetworkByteOrder(pkt);
+//	debugger("rel_recvpkt", pkt);
+	if (pkt->seqno == 5 && allow == 0) {
+		allow = 1;
+		return;
+	}
 
-	debugger("rel_recvpkt", pkt);
+
+	if (pkt->seqno == 2 && allow2 == 0) {
+		allow2 = 1;
+		return;
+	}
+
 	int checksum = pkt->cksum;
 	int compare_checksum = cksum(pkt->data, pkt->len);
 
@@ -182,53 +227,76 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		fprintf(stderr, "Checksums do not match. Packet corruption. Kill Connection. \n");
 		return;
 	}
-	fprintf(stderr, "in receiving, seqno is %i, length is %i \n", pkt->seqno,
-			pkt->len);
+//	fprintf(stderr, "in receiving, seqno is %i, length is %i \n", pkt->seqno, pkt->len);
+
+
 
 	r->receiver.packet = *pkt; //had to set the receiver packet to pkt somehow but seems hacky.
 							   //without setting it here, rel_output doesn't have the received packet
 
-	int positionInArray = (pkt->seqno % r->sender.send_window_size)
-			+ r->sender.send_window_size;
 
-	if (r->windowBuffer[positionInArray].isFull == 1 && pkt->len != ACK_PACKET_HEADER) {
-		fprintf(stderr, "Dropped the packet that should have been at position: %i \n", positionInArray);
-		return;
-	}
 
-	if(pkt->len != ACK_PACKET_HEADER) {
-		packet_t *receivingPacketCopy = malloc(sizeof pkt);
-		memcpy(receivingPacketCopy, pkt, sizeof pkt);
-		struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
-		packetBuffer->isFull = 1;
-		packetBuffer->ptr = pkt;
-		packetBuffer->timeStamp = 0;	//will need to change later
-		r->windowBuffer[positionInArray] = *packetBuffer;
-	}
 
-	printBuffers(r);
+//	if (r->windowBuffer[positionInArray].isFull == 1 && pkt->len != ACK_PACKET_HEADER) {
+//		fprintf(stderr, "Dropped the packet that should have been at position: %i \n", positionInArray);
+//		return;
+//	}
+
+//	printBuffers(r);
 
 	if (pkt->len == ACK_PACKET_HEADER) {
-		int pos = (pkt->ackno - 1) % r->sender.send_window_size;
-		int num = rand() % 2;
+		int pos = (pkt->ackno - 1) % r->windowSize;
+//		int num = rand() % 2;
+		int num = 0;
+//		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
+		int index = pkt->ackno;
+		r->senderWindowBuffer[index].acknowledged = 1;
+
+//		printBuffers(r);
+
+//		if (pkt->ackno != r->sender.expected_ack) {
+//			fprintf(stderr, "Shit hits the fan. You expected: %i\n", r->sender.expected_ack);
+//			//retransmit the packet w/ seqno pkt->ackno
+//			fprintf(stderr, "Retransmitting on: %i\n", pkt->ackno);
+//			retransmit(r, pkt->ackno);
+//		}
+
 		if (num == 0) {
 			//got the ACK
-			free(r->windowBuffer[pos].ptr);
-			r->windowBuffer[pos].isFull = 0;
-			fprintf(stderr, "ACK PACKET RECEIVED!\n");
+//			free(r->windowBuffer[pos].ptr);
+//			r->windowBuffer[pos].isFull = 0;
+//			fprintf(stderr, "ACK PACKET RECEIVED!\n");
 		} else {
 			//network dropped the ACK
 			fprintf(stderr, "ACK PACKET WAS DROPPED \n");
 		}
 	}
 
+	if (r->receiver.last_frame_received == pkt->seqno) {
+		r->receiver.last_frame_received = compute_LFR(r) + 1;
+//		r->receiver.last_frame_received += 1;
+	}
+
+
 	if (pkt->len >= DATA_PACKET_HEADER) {
-		r->receiver.last_frame_received = pkt->seqno;
+
+		packet_t *receivingPacketCopy = malloc(sizeof (struct packet));
+		memcpy(receivingPacketCopy, pkt, sizeof (struct packet));
+		struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
+		packetBuffer->isFull = 1;
+		packetBuffer->ptr = pkt;
+		packetBuffer->timeStamp = timestamp;	//will need to change later
+//		fprintf(stderr, "Packet seqno: %i, value: %s\n", packetBuffer->ptr->seqno, packetBuffer->ptr->data);
+		r->receiverWindowBuffer[pkt->seqno] = *packetBuffer;
+
+		//you should only output when in order
+
 		rel_output(r);
 
 		packet_t *ackPacket = malloc(sizeof (struct packet));
 		ackPacket->len = ACK_PACKET_HEADER;
-		ackPacket->ackno = pkt->ackno;
+//		fprintf(stderr, "\n Putting into the ack packet an ackno of: %i\n", r->receiver.last_frame_received);
+		ackPacket->ackno = pkt->seqno;
 		preparePacketForSending(ackPacket);
 		conn_sendpkt(r->c, ackPacket, ackPacket->len);
 	}
@@ -237,16 +305,18 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 void rel_read(rel_t *s) {
 	/* Gets input from conn_input, which I believe gets input from STDIN */
-	int positionInArray = (s->sender.last_frame_sent + 1) % s->sender.send_window_size;
-	fprintf(stderr, "window size is: %i \n", s->sender.send_window_size);
+	int positionInArray = (s->sender.last_frame_sent + 1) % s->windowSize;
+//	(stderr, "window size is: %i \n", s->sender.send_window_size);
 	int data_size = 0;
-	fprintf(stderr, "windowBuffer isFull value %i \n", s->windowBuffer[positionInArray].isFull);
+//	fprintf(stderr, "windowBuffer isFull value %i \n", s->windowBuffer[positionInArray].isFull);
 
-	if (s->windowBuffer[positionInArray].isFull == 0) {
-		data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
+
+	data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
+
+	if (s->senderWindowBuffer[positionInArray].isFull == 0) {
 	} else {
-		fprintf(stderr, "\n Packet was not read because there is no space in the sender's window.\n");
-		return;
+//		fprintf(stderr, "\n Packet was not read because there is no space in the sender's window.\n");
+//		return;
 	}
 
 	if (data_size == 0) {
@@ -259,10 +329,9 @@ void rel_read(rel_t *s) {
 
 		s->sender.packet.len = data_size + DATA_PACKET_HEADER;
 		s->sender.packet.seqno = s->sender.last_frame_sent;
+		s->sender.expected_ack = s->sender.packet.seqno + 1;
 		s->sender.packet.ackno = s->sender.packet.seqno + 1; //ackno should always be 1 higher than seqno
 		s->sender.packet.cksum = cksum(&s->sender.packet, s->sender.packet.len);
-
-		debugger("rel_read for sender", &(s->sender.packet));
 
 		preparePacketForSending(&(s->sender.packet));
 
@@ -272,9 +341,9 @@ void rel_read(rel_t *s) {
 		struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
 		packetBuffer->isFull = 1;
 		packetBuffer->ptr = sendingPacketCopy;
-		packetBuffer->timeStamp = 0;	//will need to change later
-		s->windowBuffer[positionInArray] = *packetBuffer;
-		fprintf(stderr, "conn_sendpkt sent with data: %s", s->sender.packet.data);
+		packetBuffer->timeStamp = timestamp;	//will need to change later
+		s->senderWindowBuffer[positionInArray] = *packetBuffer;
+//		fprintf(stderr, "conn_sendpkt sent with data: %s", s->sender.packet.data);
 		conn_sendpkt(s->c, &s->sender.packet, s->sender.packet.len);
 		memset(&s->sender.packet, 0, sizeof(&s->sender.packet));
 	}
@@ -282,15 +351,35 @@ void rel_read(rel_t *s) {
 	else {
 		//you got an error
 	}
-	printBuffers(s);
+
+//	printBuffers(s);
 
 }
 int firstSeqNoToPrint(int seqno, rel_t *r) {
-	int positionInArray = (seqno % r->sender.send_window_size) + r->sender.send_window_size;
+	int positionInArray = (seqno % r->windowSize) + r->windowSize;
 	return -1;	//FILL THIS FUNCTION IN LATER
 }
 
 void rel_output(rel_t *r) {
+
+	//print up to received, mark if it has already been outputted
+
+//	int i;
+//	for (i = 0; i < r->receiver.last_frame_received + 1; i++) {
+//		if (r->receiverWindowBuffer[i].isFull == 0) {
+//			return;
+//		}
+//
+//		if (r->receiverWindowBuffer[i].isFull == 1) {
+//			if (r->receiverWindowBuffer[i].outputted == 0) {
+//				struct WindowBuffer *packet = &r->receiverWindowBuffer[i];
+////				fprintf(stderr, "Data at position %i: %s\n", i, r->receiverWindowBuffer[i].ptr->data);
+////				printBuffers(r);
+//				conn_output(r->c, packet->ptr->data, packet->ptr->len);
+//				r->receiverWindowBuffer[i].outputted = 1;
+//			}
+//		}
+//	}
 
 	int availableSpace = conn_bufspace(r->c);
 	int seqno = firstSeqNoToPrint(r->receiver.last_frame_received, r);
@@ -299,15 +388,37 @@ void rel_output(rel_t *r) {
 		conn_output(r->c, r->receiver.packet.data, r->receiver.packet.len);
 		r->receiver.packet.len = 0;
 		memset(&r->receiver.packet, 0, sizeof(&r->receiver.packet));
-		int positionInArray = (r->receiver.packet.seqno % r->sender.send_window_size) + r->sender.send_window_size;
+		int positionInArray = (r->receiver.packet.seqno % r->windowSize) + r->windowSize;
 		//free(r->windowBuffer[positionInArray].ptr);
-		//r->windowBuffer[positionInArray].isFull = 0;
+//		r->windowBuffer[positionInArray].isFull = 0;
 	}
+
 
 	/* send ack packet back to receiver */
 }
 
 void rel_timer() {
 	/* Retransmit any packets that need to be retransmitted */
+	rel_t *r = rel_list;
+	timestamp++;
 
+	int i;
+	for (i = 0; i < r->windowSize; i++) {
+		if (r->senderWindowBuffer[i].isFull == 1) {  //you have already sent packet[i]
+			if (r->senderWindowBuffer[i].acknowledged == 0) { // you have not received ack for packet[i]
+				if ((timestamp - r->senderWindowBuffer[i].timeStamp) > 5) { //it has been more than 5 time periods
+					fprintf(stderr, "Retransmitted on location: %i\n", i);
+					retransmit(r, i);
+				}
+			}
+		}
+	}
+
+
+//	if (pkt->ackno != r->sender.expected_ack) {
+//		fprintf(stderr, "Shit hits the fan. You expected: %i\n", r->sender.expected_ack);
+//		//retransmit the packet w/ seqno pkt->ackno
+//		fprintf(stderr, "Retransmitting on: %i\n", pkt->ackno);
+//		retransmit(r, pkt->ackno);
+//	}
 }
