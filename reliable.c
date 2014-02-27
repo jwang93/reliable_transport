@@ -35,6 +35,8 @@ struct WindowBuffer {
 	packet_t* ptr;
 	int isFull;		//0 is for empty, 1 is for full
 	int timeStamp;
+	int acknowledged; //0 for no, 1 for yes
+	int outputted; //0 for no, 1 for yes
 };
 
 /* reliable_state type is the main data structure that holds all the crucial information for this lab */
@@ -147,7 +149,7 @@ void printBuffers(rel_t *r) {
 
 	fprintf(stderr, "\n");
 	for (i = 0; i < r->windowSize; i++) {
-		fprintf(stderr, "[%i] = %i, ", i, r->senderWindowBuffer[i].isFull);
+		fprintf(stderr, "[%i] = %i (F), %i (A), ", i, r->senderWindowBuffer[i].isFull, r->senderWindowBuffer[i].acknowledged);
 	}
 	fprintf(stderr, " SENDER BUFFER. \n");
 
@@ -241,6 +243,10 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 //		int num = rand() % 2;
 		int num = 0;
 		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
+		int index = pkt->ackno;
+		r->senderWindowBuffer[index].acknowledged = 1;
+
+		printBuffers(r);
 
 //		if (pkt->ackno != r->sender.expected_ack) {
 //			fprintf(stderr, "Shit hits the fan. You expected: %i\n", r->sender.expected_ack);
@@ -265,11 +271,6 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 //		r->receiver.last_frame_received += 1;
 	}
 
-	if(pkt->len != ACK_PACKET_HEADER) {
-
-//		printBuffers(r);
-	}
-
 
 	if (pkt->len >= DATA_PACKET_HEADER) {
 
@@ -283,14 +284,12 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 		//you should only output when in order
 
-		if (pkt->seqno == r->receiver.ackno) {
-			rel_output(r);
-		}
+		rel_output(r);
 
 		packet_t *ackPacket = malloc(sizeof (struct packet));
 		ackPacket->len = ACK_PACKET_HEADER;
 //		fprintf(stderr, "\n Putting into the ack packet an ackno of: %i\n", r->receiver.last_frame_received);
-		ackPacket->ackno = r->receiver.last_frame_received;
+		ackPacket->ackno = pkt->seqno;
 		preparePacketForSending(ackPacket);
 		conn_sendpkt(r->c, ackPacket, ackPacket->len);
 	}
@@ -327,8 +326,6 @@ void rel_read(rel_t *s) {
 		s->sender.packet.ackno = s->sender.packet.seqno + 1; //ackno should always be 1 higher than seqno
 		s->sender.packet.cksum = cksum(&s->sender.packet, s->sender.packet.len);
 
-//		debugger("rel_read for sender", &(s->sender.packet));
-
 		preparePacketForSending(&(s->sender.packet));
 
 		packet_t *sendingPacketCopy = malloc(sizeof s->sender.packet);
@@ -358,16 +355,33 @@ int firstSeqNoToPrint(int seqno, rel_t *r) {
 
 void rel_output(rel_t *r) {
 
-	int availableSpace = conn_bufspace(r->c);
-	int seqno = firstSeqNoToPrint(r->receiver.last_frame_received, r);
-	if (availableSpace >= r->receiver.packet.len && r->receiver.packet.len > 0) {
+	//print up to received, mark if it has already been outputted
 
-		conn_output(r->c, r->receiver.packet.data, r->receiver.packet.len);
-		r->receiver.packet.len = 0;
-		memset(&r->receiver.packet, 0, sizeof(&r->receiver.packet));
-		int positionInArray = (r->receiver.packet.seqno % r->windowSize) + r->windowSize;
-		//free(r->windowBuffer[positionInArray].ptr);
-//		r->windowBuffer[positionInArray].isFull = 0;
+	int i;
+	for (i = 0; i < r->receiver.last_frame_received + 1; i++) {
+		if (r->receiverWindowBuffer[i].isFull == 0) {
+			return;
+		}
+
+		if (r->receiverWindowBuffer[i].isFull == 1) {
+			if (r->receiverWindowBuffer[i].outputted == 0) {
+				struct WindowBuffer *packet = &r->receiverWindowBuffer[i];
+				conn_output(r->c, packet->ptr->data, packet->ptr->len);
+				r->receiverWindowBuffer[i].outputted = 1;
+			}
+		}
+	}
+
+//	int availableSpace = conn_bufspace(r->c);
+//	int seqno = firstSeqNoToPrint(r->receiver.last_frame_received, r);
+//	if (availableSpace >= r->receiver.packet.len && r->receiver.packet.len > 0) {
+//
+//		conn_output(r->c, r->receiver.packet.data, r->receiver.packet.len);
+//		r->receiver.packet.len = 0;
+//		memset(&r->receiver.packet, 0, sizeof(&r->receiver.packet));
+//		int positionInArray = (r->receiver.packet.seqno % r->windowSize) + r->windowSize;
+//		//free(r->windowBuffer[positionInArray].ptr);
+////		r->windowBuffer[positionInArray].isFull = 0;
 	}
 
 	/* send ack packet back to receiver */
@@ -378,6 +392,17 @@ void rel_timer() {
 	rel_t *r = rel_list;
 	timestamp++;
 
+	int i;
+	for (i = 0; i < r->windowSize; i++) {
+		if (r->senderWindowBuffer[i].isFull == 1) {  //you have already sent packet[i]
+			if (r->senderWindowBuffer[i].acknowledged == 0) { // you have not received ack for packet[i]
+				if ((timestamp - r->senderWindowBuffer[i].timeStamp) > 5) { //it has been more than 5 time periods
+					fprintf(stderr, "Retransmitted on location: %i\n", i);
+					retransmit(r, i);
+				}
+			}
+		}
+	}
 
 
 //	if (pkt->ackno != r->sender.expected_ack) {
