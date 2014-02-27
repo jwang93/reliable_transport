@@ -208,7 +208,6 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 	convertPacketToNetworkByteOrder(pkt);
 //	debugger("rel_recvpkt", pkt);
-
 	if (pkt->seqno == 1 && allow == 0) {
 		allow = 1;
 		return;
@@ -279,7 +278,8 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
 		packetBuffer->isFull = 1;
 		packetBuffer->ptr = pkt;
-		packetBuffer->timeStamp = 0;	//will need to change later
+		packetBuffer->timeStamp = timestamp;	//will need to change later
+		fprintf(stderr, "Packet seqno: %i, value: %s\n", packetBuffer->ptr->seqno, packetBuffer->ptr->data);
 		r->receiverWindowBuffer[pkt->seqno] = *packetBuffer;
 
 		//you should only output when in order
@@ -366,6 +366,8 @@ void rel_output(rel_t *r) {
 		if (r->receiverWindowBuffer[i].isFull == 1) {
 			if (r->receiverWindowBuffer[i].outputted == 0) {
 				struct WindowBuffer *packet = &r->receiverWindowBuffer[i];
+				fprintf(stderr, "Data at position %i: %s\n", i, r->receiverWindowBuffer[i].ptr->data);
+				printBuffers(r);
 				conn_output(r->c, packet->ptr->data, packet->ptr->len);
 				r->receiverWindowBuffer[i].outputted = 1;
 			}
@@ -382,7 +384,7 @@ void rel_output(rel_t *r) {
 //		int positionInArray = (r->receiver.packet.seqno % r->windowSize) + r->windowSize;
 //		//free(r->windowBuffer[positionInArray].ptr);
 ////		r->windowBuffer[positionInArray].isFull = 0;
-	}
+
 
 	/* send ack packet back to receiver */
 }
