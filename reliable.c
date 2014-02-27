@@ -210,16 +210,26 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 	convertPacketToNetworkByteOrder(pkt);
 
 //	debugger("rel_recvpkt", pkt);
-	if (pkt->seqno == 3 && allow == 0) {
-		allow = 1;
-		return;
-	}
+//	if (pkt->seqno == 3 && allow == 0) {
+//		allow = 1;
+//		return;
+//	}
+//
+//
+//	if (pkt->seqno == 2 && allow2 == 0) {
+//		allow2 = 1;
+//		return;
+//	}
 
 
-	if (pkt->seqno == 2 && allow2 == 0) {
-		allow2 = 1;
-		return;
+	if (pkt->len >= DATA_PACKET_HEADER) {
+		int num = rand() % 4;
+		if (num < 3) {
+			fprintf(stderr, "Packet[%i] dropped\n", pkt->seqno);
+			return;
+		}
 	}
+
 
 	int checksum = pkt->cksum;
 	int compare_checksum = cksum(pkt->data, pkt->len);
