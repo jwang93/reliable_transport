@@ -208,8 +208,9 @@ int compute_LFR(rel_t* r) {
 void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 	convertPacketToNetworkByteOrder(pkt);
+
 //	debugger("rel_recvpkt", pkt);
-	if (pkt->seqno == 5 && allow == 0) {
+	if (pkt->seqno == 3 && allow == 0) {
 		allow = 1;
 		return;
 	}
@@ -284,11 +285,21 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		memcpy(receivingPacketCopy, pkt, sizeof (struct packet));
 		struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
 		packetBuffer->isFull = 1;
-		packetBuffer->ptr = pkt;
+		packetBuffer->ptr = receivingPacketCopy;
 		packetBuffer->timeStamp = timestamp;	//will need to change later
 //		fprintf(stderr, "Packet seqno: %i, value: %s\n", packetBuffer->ptr->seqno, packetBuffer->ptr->data);
+
+//		if (pkt->seqno == 0) {
+//			fprintf(stderr, "Modifying buf[0]\n");
+//		}
 		r->receiverWindowBuffer[pkt->seqno] = *packetBuffer;
 
+//		if (pkt->seqno == 3 || pkt->seqno == 4) {
+//			int i;
+//			for (i = 0; i < 4; i++) {
+//				fprintf(stderr, "Data at %i = %s || ", i, r->receiverWindowBuffer[i].ptr->data);
+//			}
+//		}
 		//you should only output when in order
 
 		rel_output(r);
@@ -364,32 +375,32 @@ void rel_output(rel_t *r) {
 
 	//print up to received, mark if it has already been outputted
 
-//	int i;
-//	for (i = 0; i < r->receiver.last_frame_received + 1; i++) {
-//		if (r->receiverWindowBuffer[i].isFull == 0) {
-//			return;
-//		}
-//
-//		if (r->receiverWindowBuffer[i].isFull == 1) {
-//			if (r->receiverWindowBuffer[i].outputted == 0) {
-//				struct WindowBuffer *packet = &r->receiverWindowBuffer[i];
-////				fprintf(stderr, "Data at position %i: %s\n", i, r->receiverWindowBuffer[i].ptr->data);
-////				printBuffers(r);
-//				conn_output(r->c, packet->ptr->data, packet->ptr->len);
-//				r->receiverWindowBuffer[i].outputted = 1;
-//			}
-//		}
-//	}
+	int i;
+	for (i = 0; i < r->windowSize; i++) {
+		if (r->receiverWindowBuffer[i].isFull == 0) {
+			return;
+		}
 
-	int availableSpace = conn_bufspace(r->c);
-	if (availableSpace >= r->receiver.packet.len && r->receiver.packet.len > 0) {
-		fprintf(stderr, "Data: %s", r->receiver.packet.data);
-		conn_output(r->c, r->receiver.packet.data, r->receiver.packet.len);
-		r->receiver.packet.len = 0;
-		memset(&r->receiver.packet.data, 0, sizeof(&r->receiver.packet.data));
-		//free(r->windowBuffer[positionInArray].ptr);
-//		r->windowBuffer[positionInArray].isFull = 0;
+		if (r->receiverWindowBuffer[i].isFull == 1) {
+			if (r->receiverWindowBuffer[i].outputted == 0) {
+				struct WindowBuffer *packet = &r->receiverWindowBuffer[i];
+//				fprintf(stderr, "Data at position %i: %s\n", i, r->receiverWindowBuffer[i].ptr->data);
+//				printBuffers(r);
+				conn_output(r->c, packet->ptr->data, packet->ptr->len);
+				r->receiverWindowBuffer[i].outputted = 1;
+			}
+		}
 	}
+
+//	int availableSpace = conn_bufspace(r->c);
+//	if (availableSpace >= r->receiver.packet.len && r->receiver.packet.len > 0) {
+//		fprintf(stderr, "Data: %s", r->receiver.packet.data);
+//		conn_output(r->c, r->receiver.packet.data, r->receiver.packet.len);
+//		r->receiver.packet.len = 0;
+//		memset(&r->receiver.packet.data, 0, sizeof(&r->receiver.packet.data));
+//		//free(r->windowBuffer[positionInArray].ptr);
+////		r->windowBuffer[positionInArray].isFull = 0;
+//	}
 
 
 	/* send ack packet back to receiver */
