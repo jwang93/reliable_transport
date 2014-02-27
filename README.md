@@ -6,6 +6,7 @@ reliable_transport
 
 ####Known Bugs:
 
+
 0. I am using a positive ack to determine when to retransmit even though we are supposed to be a cumulative ack... 
 	Need to convert this to cumulative ack 
 
@@ -14,6 +15,7 @@ reliable_transport
      -- need to figure out good solution for both sender and receiver 
 
 2. retransmission looks good, and the output ordering is correct... but there is some seg fault  
+	-- WHEN A PACKET GETS DROPPED TWICE IT BREAKS
 
 3. cksum doesn't work with ./reference...? don't know why. also don't know how to use ./reference with window size 
 	-- must be because we are computing checksums in different ways 
