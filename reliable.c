@@ -54,6 +54,7 @@ struct reliable_state {
 };
 rel_t *rel_list; //rel_t is a type of reliable state
 int allow = 0;
+int timestamp = 0;
 
 void initialize(rel_t *r, int windowSize) {
 
@@ -233,17 +234,6 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 //		return;
 //	}
 
-	if(pkt->len != ACK_PACKET_HEADER) {
-		packet_t *receivingPacketCopy = malloc(sizeof pkt);
-		memcpy(receivingPacketCopy, pkt, sizeof pkt);
-		struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
-		packetBuffer->isFull = 1;
-		packetBuffer->ptr = pkt;
-		packetBuffer->timeStamp = 0;	//will need to change later
-		r->receiverWindowBuffer[pkt->seqno] = *packetBuffer;
-//		printBuffers(r);
-	}
-
 //	printBuffers(r);
 
 	if (pkt->len == ACK_PACKET_HEADER) {
@@ -252,12 +242,12 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		int num = 0;
 		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
 
-		if (pkt->ackno != r->sender.expected_ack) {
-			fprintf(stderr, "Shit hits the fan. You expected: %i\n", r->sender.expected_ack);
-			//retransmit the packet w/ seqno pkt->ackno
-			fprintf(stderr, "Retransmitting on: %i\n", pkt->ackno);
-			retransmit(r, pkt->ackno);
-		}
+//		if (pkt->ackno != r->sender.expected_ack) {
+//			fprintf(stderr, "Shit hits the fan. You expected: %i\n", r->sender.expected_ack);
+//			//retransmit the packet w/ seqno pkt->ackno
+//			fprintf(stderr, "Retransmitting on: %i\n", pkt->ackno);
+//			retransmit(r, pkt->ackno);
+//		}
 
 		if (num == 0) {
 			//got the ACK
@@ -271,13 +261,31 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 	}
 
 	if (r->receiver.last_frame_received == pkt->seqno) {
-		r->receiver.last_frame_received = compute_LFR(r);
+		r->receiver.last_frame_received = compute_LFR(r) + 1;
 //		r->receiver.last_frame_received += 1;
 	}
 
+	if(pkt->len != ACK_PACKET_HEADER) {
+
+//		printBuffers(r);
+	}
+
+
 	if (pkt->len >= DATA_PACKET_HEADER) {
-//		r->receiver.last_frame_received = pkt->seqno;
-		rel_output(r);
+
+		packet_t *receivingPacketCopy = malloc(sizeof (struct packet));
+		memcpy(receivingPacketCopy, pkt, sizeof (struct packet));
+		struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
+		packetBuffer->isFull = 1;
+		packetBuffer->ptr = pkt;
+		packetBuffer->timeStamp = 0;	//will need to change later
+		r->receiverWindowBuffer[pkt->seqno] = *packetBuffer;
+
+		//you should only output when in order
+
+		if (pkt->seqno == r->receiver.ackno) {
+			rel_output(r);
+		}
 
 		packet_t *ackPacket = malloc(sizeof (struct packet));
 		ackPacket->len = ACK_PACKET_HEADER;
@@ -329,7 +337,7 @@ void rel_read(rel_t *s) {
 		struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
 		packetBuffer->isFull = 1;
 		packetBuffer->ptr = sendingPacketCopy;
-		packetBuffer->timeStamp = 0;	//will need to change later
+		packetBuffer->timeStamp = timestamp;	//will need to change later
 		s->senderWindowBuffer[positionInArray] = *packetBuffer;
 //		fprintf(stderr, "conn_sendpkt sent with data: %s", s->sender.packet.data);
 		conn_sendpkt(s->c, &s->sender.packet, s->sender.packet.len);
@@ -368,5 +376,14 @@ void rel_output(rel_t *r) {
 void rel_timer() {
 	/* Retransmit any packets that need to be retransmitted */
 	rel_t *r = rel_list;
+	timestamp++;
 
+
+
+//	if (pkt->ackno != r->sender.expected_ack) {
+//		fprintf(stderr, "Shit hits the fan. You expected: %i\n", r->sender.expected_ack);
+//		//retransmit the packet w/ seqno pkt->ackno
+//		fprintf(stderr, "Retransmitting on: %i\n", pkt->ackno);
+//		retransmit(r, pkt->ackno);
+//	}
 }
