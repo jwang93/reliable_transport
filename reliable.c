@@ -209,26 +209,25 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 	convertPacketToNetworkByteOrder(pkt);
 
-//	debugger("rel_recvpkt", pkt);
-//	if (pkt->seqno == 3 && allow == 0) {
-//		allow = 1;
-//		return;
-//	}
-//
-//
+	if (pkt->seqno == 2 && allow == 0) {
+		allow = 1;
+		return;
+	}
+
+
 //	if (pkt->seqno == 2 && allow2 == 0) {
 //		allow2 = 1;
 //		return;
 //	}
 
 
-	if (pkt->len >= DATA_PACKET_HEADER) {
-		int num = rand() % 4;
-		if (num < 3) {
-			fprintf(stderr, "Packet[%i] dropped\n", pkt->seqno);
-			return;
-		}
-	}
+//	if (pkt->len >= DATA_PACKET_HEADER) {
+//		int num = rand() % 4;
+//		if (num < 3) {
+//			fprintf(stderr, "Packet[%i] dropped\n", pkt->seqno);
+//			return;
+//		}
+//	}
 
 //	fprintf(stderr, "Data: %s, Checksum: %i", pkt->data, pkt->cksum);
 
@@ -260,31 +259,26 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 //	printBuffers(r);
 
 	if (pkt->len == ACK_PACKET_HEADER) {
-		int pos = (pkt->ackno - 1) % r->windowSize;
-//		int num = rand() % 2;
-		int num = 0;
-//		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
+		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
 		int index = pkt->ackno;
-		r->senderWindowBuffer[index].acknowledged = 1;
+		r->senderWindowBuffer[index-1].acknowledged = 1; //everything lower than ackno should be acknowledged
+
+		fprintf(stderr, "ACK Receive Buffer: \n");
+		int i;
+		for (i = 0; i < r->windowSize; i++) {
+			fprintf(stderr, "[%i] %i, ", i, r->senderWindowBuffer[i].acknowledged);
+		}
+		fprintf(stderr, "\n");
 
 //		printBuffers(r);
 
-//		if (pkt->ackno != r->sender.expected_ack) {
-//			fprintf(stderr, "Shit hits the fan. You expected: %i\n", r->sender.expected_ack);
+//		if (pkt->ackno != r->receiver.last_frame_received) {
+//			fprintf(stderr, "PROBLEM: ackno is: %i, Expected: %i\n", pkt->ackno, r->receiver.last_frame_received);
 //			//retransmit the packet w/ seqno pkt->ackno
-//			fprintf(stderr, "Retransmitting on: %i\n", pkt->ackno);
-//			retransmit(r, pkt->ackno);
+//		} else {
+//			fprintf(stderr, "GOOD: ackno is: %i, Expected: %i\n", pkt->ackno, r->receiver.last_frame_received);
 //		}
 
-		if (num == 0) {
-			//got the ACK
-//			free(r->windowBuffer[pos].ptr);
-//			r->windowBuffer[pos].isFull = 0;
-//			fprintf(stderr, "ACK PACKET RECEIVED!\n");
-		} else {
-			//network dropped the ACK
-			fprintf(stderr, "ACK PACKET WAS DROPPED \n");
-		}
 	}
 
 	if (r->receiver.last_frame_received == pkt->seqno) {
@@ -323,7 +317,7 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		packet_t *ackPacket = malloc(sizeof (struct packet));
 		ackPacket->len = ACK_PACKET_HEADER;
 //		fprintf(stderr, "\n Putting into the ack packet an ackno of: %i\n", r->receiver.last_frame_received);
-		ackPacket->ackno = pkt->seqno;
+		ackPacket->ackno = r->receiver.last_frame_received;
 		preparePacketForSending(ackPacket);
 		conn_sendpkt(r->c, ackPacket, ackPacket->len);
 	}
