@@ -258,17 +258,24 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 //	printBuffers(r);
 
+
+	if (r->receiver.last_frame_received == pkt->seqno) {
+		r->receiver.last_frame_received = compute_LFR(r) + 1;
+//		r->receiver.last_frame_received += 1;
+	}
+
 	if (pkt->len == ACK_PACKET_HEADER) {
 		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
 		int index = pkt->ackno;
 		r->senderWindowBuffer[index-1].acknowledged = 1; //everything lower than ackno should be acknowledged
 
-		fprintf(stderr, "ACK Receive Buffer: \n");
-		int i;
-		for (i = 0; i < r->windowSize; i++) {
-			fprintf(stderr, "[%i] %i, ", i, r->senderWindowBuffer[i].acknowledged);
-		}
-		fprintf(stderr, "\n");
+//		fprintf(stderr, "ACK Receive Buffer: \n");
+//		int i;
+//		for (i = 0; i < index; i++) {
+//			r->senderWindowBuffer[i].acknowledged = 1;
+////			fprintf(stderr, "[%i] %i, ", i, r->senderWindowBuffer[i].acknowledged);
+//		}
+//		fprintf(stderr, "\n");
 
 //		printBuffers(r);
 
@@ -281,15 +288,12 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 	}
 
-	if (r->receiver.last_frame_received == pkt->seqno) {
-		r->receiver.last_frame_received = compute_LFR(r) + 1;
-//		r->receiver.last_frame_received += 1;
-	}
-
-
-
 	if (pkt->len >= DATA_PACKET_HEADER) {
 
+		if (r->receiverWindowBuffer[pkt->seqno].isFull == 1) {
+			fprintf(stderr, "Throwing away pkt[%i] because it's dup\n", pkt->seqno);
+			return;
+		}
 
 		packet_t *receivingPacketCopy = malloc(sizeof (struct packet));
 		memcpy(receivingPacketCopy, pkt, sizeof (struct packet));
@@ -316,7 +320,8 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 		packet_t *ackPacket = malloc(sizeof (struct packet));
 		ackPacket->len = ACK_PACKET_HEADER;
-//		fprintf(stderr, "\n Putting into the ack packet an ackno of: %i\n", r->receiver.last_frame_received);
+		printBuffers(r);
+		fprintf(stderr, "\n compute_LFR(r)+1: %i, last_frame_received: %i", compute_LFR(r), r->receiver.last_frame_received);
 		ackPacket->ackno = r->receiver.last_frame_received;
 		preparePacketForSending(ackPacket);
 		conn_sendpkt(r->c, ackPacket, ackPacket->len);
