@@ -195,7 +195,7 @@ int compute_LFR(rel_t* r) {
 	 *
 	 */
 	int i;
-	for (i = 0; i < r->windowSize; i++) { //might be too small...
+	for (i = 0; i <= r->windowSize; i++) { //might be too small...
 //		printBuffers(r);
 		if (r->receiverWindowBuffer[i].isFull == 0) {
 //			fprintf(stderr, "Return values from computeLFR: %i*****\n", i);
@@ -360,6 +360,15 @@ void rel_read(rel_t *s) {
 		s->sender.expected_ack = s->sender.packet.seqno + 1;
 		s->sender.packet.ackno = s->sender.packet.seqno + 1; //ackno should always be 1 higher than seqno
 		s->sender.packet.cksum = cksum(&s->sender.packet, s->sender.packet.len);
+
+
+		fprintf(stderr, "seqno: %i, windowSize: %i\n", s->sender.packet.seqno, s->windowSize);
+		if (s->sender.packet.seqno > s->windowSize || s->sender.packet.seqno == s->windowSize) {
+			fprintf(stderr, "**** You have exceeded the sender's window size. Packet will be dropped. **** \n");
+			s->sender.last_frame_sent--;
+			return;
+		}
+
 
 		preparePacketForSending(&(s->sender.packet));
 
