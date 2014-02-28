@@ -185,7 +185,7 @@ void retransmit(rel_t *s, int seqno) {
 //	convertPacketToNetworkByteOrder(packet->ptr); //confirmed that this packet is correct
 
 	conn_sendpkt(s->c, packet->ptr, packet->ptr->len);
-	memset(packet->ptr, 0, sizeof(packet->ptr));
+//	memset(packet->ptr, 0, sizeof(packet->ptr));
 
 //	fprintf(stderr, "You want to retransmit packet w/ seqno: %i and data: %s", packet->ptr->seqno, packet->ptr->data);
 }
@@ -230,9 +230,13 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		}
 	}
 
+//	fprintf(stderr, "Data: %s, Checksum: %i", pkt->data, pkt->cksum);
 
 	int checksum = pkt->cksum;
 	int compare_checksum = cksum(pkt->data, pkt->len);
+
+//	fprintf(stderr, "Looking for where seg fault happens.\n");
+
 
 	if (compare_checksum != checksum) {
 		fprintf(stderr, "Checksums do not match. Packet corruption. Kill Connection. \n");
@@ -289,7 +293,9 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 	}
 
 
+
 	if (pkt->len >= DATA_PACKET_HEADER) {
+
 
 		packet_t *receivingPacketCopy = malloc(sizeof (struct packet));
 		memcpy(receivingPacketCopy, pkt, sizeof (struct packet));
