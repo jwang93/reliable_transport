@@ -28,6 +28,7 @@ struct Receiver {
 	int largest_acceptable_seqno;   //going to be needed once we have a RWS/SWS
 	int last_frame_received;
 	int ackno;
+	int last_frame_printed;
 	packet_t packet;
 };
 
@@ -73,13 +74,12 @@ void initialize(rel_t *r, int windowSize) {
 	r->receiver.packet.ackno = 1;
 	r->receiver.packet.seqno = 0;		//should this seqno be = 1?
 	r->receiver.last_frame_received = 0;
+	r->receiver.last_frame_printed = 0;
 	r->receiver.packet.data[500] = '\0';//trying to initialize receiver packet data
 	r->receiver.ackno = 0;
 	r->windowSize = windowSize;
 	memset(&r->senderWindowBuffer, 0, sizeof(&r->senderWindowBuffer));
 	memset(&r->receiverWindowBuffer, 0, sizeof(&r->receiverWindowBuffer));
-
-
 }
 
 /* Creates a new reliable protocol session, returns NULL on failure.
@@ -150,12 +150,12 @@ void printBuffers(rel_t *r) {
 
 	fprintf(stderr, "\n");
 	for (i = 0; i < r->windowSize; i++) {
-		fprintf(stderr, "[%i] = %i (F), %i (A), ", i, r->senderWindowBuffer[i].isFull, r->senderWindowBuffer[i].acknowledged);
+		fprintf(stderr, "[%i] = %i (F), %i (A), ", i, r->senderWindowBuffer[i % r->windowSize].isFull, r->senderWindowBuffer[i % r->windowSize].acknowledged);
 	}
 	fprintf(stderr, " SENDER BUFFER. \n");
 
 	for (i = 0; i < r->windowSize; i++) {
-		fprintf(stderr, "[%i] = %i, ", i, r->receiverWindowBuffer[i].isFull);
+		fprintf(stderr, "[%i] = %i, ", i, r->receiverWindowBuffer[i % r->windowSize].isFull);
 	}
 	fprintf(stderr, " RECEIVER BUFFER. \n");
 	fprintf(stderr, "\n");
@@ -180,7 +180,7 @@ void convertPacketToNetworkByteOrder(packet_t *pkt) {
 
 // This method retransmits the packet w/ given seqno
 void retransmit(rel_t *s, int seqno) {
-	struct WindowBuffer *packet = &s->senderWindowBuffer[seqno];
+	struct WindowBuffer *packet = &s->senderWindowBuffer[seqno % s->windowSize];
 //	printBuffers(s);
 //	convertPacketToNetworkByteOrder(packet->ptr); //confirmed that this packet is correct
 
@@ -197,7 +197,7 @@ int compute_LFR(rel_t* r) {
 	int i;
 	for (i = 0; i < r->windowSize; i++) { //might be too small...
 //		printBuffers(r);
-		if (r->receiverWindowBuffer[i].isFull == 0) {
+		if (r->receiverWindowBuffer[i % r->windowSize].isFull == 0) {
 //			fprintf(stderr, "Return values from computeLFR: %i*****\n", i);
 			return i;
 		}
@@ -263,12 +263,15 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
 		int index = pkt->ackno;
 		fprintf(stderr, "Here is what indices have been acked: %i\n", index-1);
-		r->senderWindowBuffer[index-1].acknowledged = 1; //everything lower than ackno should be acknowledged
+		r->senderWindowBuffer[(index-1) % r->windowSize].acknowledged = 1; //everything lower than ackno should be acknowledged
+
+		r->senderWindowBuffer[(index - 1) % r->windowSize].isFull = 0;
+		free(r->senderWindowBuffer[(index - 1) % r->windowSize].ptr);
 
 //		fprintf(stderr, "ACK Receive Buffer: \n");
 		int i;
 		for (i = 0; i < index; i++) {
-			r->senderWindowBuffer[i].acknowledged = 1;
+			r->senderWindowBuffer[i % r->windowSize].acknowledged = 1;
 //			fprintf(stderr, "[%i] %i, ", i, r->senderWindowBuffer[i].acknowledged);
 		}
 //		fprintf(stderr, "\n");
@@ -286,7 +289,7 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 	if (pkt->len >= DATA_PACKET_HEADER) {
 
-		if (r->receiverWindowBuffer[pkt->seqno].isFull == 1) {
+		if (r->receiverWindowBuffer[pkt->seqno % r->windowSize].isFull == 1) {
 			fprintf(stderr, "Throwing away pkt[%i] because it's dup\n", pkt->seqno);
 			return;
 		}
@@ -302,7 +305,7 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 //		if (pkt->seqno == 0) {
 //			fprintf(stderr, "Modifying buf[0]\n");
 //		}
-		r->receiverWindowBuffer[pkt->seqno] = *packetBuffer;
+		r->receiverWindowBuffer[pkt->seqno % r->windowSize] = *packetBuffer;
 
 
 		if (r->receiver.last_frame_received == pkt->seqno) {
@@ -341,7 +344,7 @@ void rel_read(rel_t *s) {
 
 	data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
 
-	if (s->senderWindowBuffer[positionInArray].isFull == 0) {
+	if (s->senderWindowBuffer[positionInArray % s->windowSize].isFull == 0) {
 	} else {
 //		fprintf(stderr, "\n Packet was not read because there is no space in the sender's window.\n");
 //		return;
@@ -370,7 +373,7 @@ void rel_read(rel_t *s) {
 		packetBuffer->isFull = 1;
 		packetBuffer->ptr = sendingPacketCopy;
 		packetBuffer->timeStamp = timestamp;	//will need to change later
-		s->senderWindowBuffer[positionInArray] = *packetBuffer;
+		s->senderWindowBuffer[positionInArray % s->windowSize] = *packetBuffer;
 //		fprintf(stderr, "conn_sendpkt sent with data: %s", s->sender.packet.data);
 		conn_sendpkt(s->c, &s->sender.packet, s->sender.packet.len);
 		memset(&s->sender.packet, 0, sizeof(&s->sender.packet));
@@ -383,28 +386,27 @@ void rel_read(rel_t *s) {
 //	printBuffers(s);
 
 }
-int firstSeqNoToPrint(int seqno, rel_t *r) {
-	int positionInArray = (seqno % r->windowSize) + r->windowSize;
-	return -1;	//FILL THIS FUNCTION IN LATER
-}
 
 void rel_output(rel_t *r) {
 
 	//print up to received, mark if it has already been outputted
 
 	int i;
-	for (i = 0; i < r->windowSize; i++) {
-		if (r->receiverWindowBuffer[i].isFull == 0) {
+	for (i = r->receiver.last_frame_printed; i < r->windowSize + r->receiver.last_frame_printed; i++) {
+		if (r->receiverWindowBuffer[i % r->windowSize].isFull == 0) {
 			return;
 		}
 
-		if (r->receiverWindowBuffer[i].isFull == 1) {
-			if (r->receiverWindowBuffer[i].outputted == 0) {
-				struct WindowBuffer *packet = &r->receiverWindowBuffer[i];
+		if (r->receiverWindowBuffer[i % r->windowSize].isFull == 1) {
+			if (r->receiverWindowBuffer[i % r->windowSize].outputted == 0) {
+				struct WindowBuffer *packet = &r->receiverWindowBuffer[i % r->windowSize];
 //				fprintf(stderr, "Data at position %i: %s\n", i, r->receiverWindowBuffer[i].ptr->data);
 //				printBuffers(r);
 				conn_output(r->c, packet->ptr->data, packet->ptr->len);
-				r->receiverWindowBuffer[i].outputted = 1;
+				r->receiverWindowBuffer[i % r->windowSize].outputted = 0;
+				r->receiverWindowBuffer[i % r->windowSize].isFull = 0;
+				free(r->receiverWindowBuffer[i % r->windowSize].ptr);
+				r->receiver.last_frame_printed++;
 			}
 		}
 	}
@@ -430,9 +432,9 @@ void rel_timer() {
 
 	int i;
 	for (i = 0; i < r->windowSize; i++) {
-		if (r->senderWindowBuffer[i].isFull == 1) {  //you have already sent packet[i]
-			if (r->senderWindowBuffer[i].acknowledged == 0) { // you have not received ack for packet[i]
-				if ((timestamp - r->senderWindowBuffer[i].timeStamp) > 5) { //it has been more than 5 time periods
+		if (r->senderWindowBuffer[i % r->windowSize].isFull == 1) {  //you have already sent packet[i]
+			if (r->senderWindowBuffer[i % r->windowSize].acknowledged == 0) { // you have not received ack for packet[i]
+				if ((timestamp - r->senderWindowBuffer[i % r->windowSize].timeStamp) > 5) { //it has been more than 5 time periods
 					fprintf(stderr, "Retransmitted on location: %i\n", i);
 					retransmit(r, i);
 				}
