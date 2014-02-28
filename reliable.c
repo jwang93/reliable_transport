@@ -209,25 +209,25 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 	convertPacketToNetworkByteOrder(pkt);
 
-	if (pkt->seqno == 2 && allow == 0) {
-		allow = 1;
-		return;
-	}
-
-
-//	if (pkt->seqno == 2 && allow2 == 0) {
+//	if (pkt->seqno == 2 && allow == 0) {
+//		allow = 1;
+//		return;
+//	}
+//
+//
+//	if (pkt->seqno == 5 && allow2 == 0) {
 //		allow2 = 1;
 //		return;
 //	}
 
 
-//	if (pkt->len >= DATA_PACKET_HEADER) {
-//		int num = rand() % 4;
-//		if (num < 3) {
-//			fprintf(stderr, "Packet[%i] dropped\n", pkt->seqno);
-//			return;
-//		}
-//	}
+	if (pkt->len >= DATA_PACKET_HEADER) {
+		int num = rand() % 4;
+		if (num < 3) {
+			fprintf(stderr, "Packet[%i] dropped\n", pkt->seqno);
+			return;
+		}
+	}
 
 //	fprintf(stderr, "Data: %s, Checksum: %i", pkt->data, pkt->cksum);
 
@@ -259,22 +259,18 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 //	printBuffers(r);
 
 
-	if (r->receiver.last_frame_received == pkt->seqno) {
-		r->receiver.last_frame_received = compute_LFR(r) + 1;
-//		r->receiver.last_frame_received += 1;
-	}
-
 	if (pkt->len == ACK_PACKET_HEADER) {
 		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
 		int index = pkt->ackno;
+		fprintf(stderr, "Here is what indices have been acked: %i\n", index-1);
 		r->senderWindowBuffer[index-1].acknowledged = 1; //everything lower than ackno should be acknowledged
 
 //		fprintf(stderr, "ACK Receive Buffer: \n");
-//		int i;
-//		for (i = 0; i < index; i++) {
-//			r->senderWindowBuffer[i].acknowledged = 1;
-////			fprintf(stderr, "[%i] %i, ", i, r->senderWindowBuffer[i].acknowledged);
-//		}
+		int i;
+		for (i = 0; i < index; i++) {
+			r->senderWindowBuffer[i].acknowledged = 1;
+//			fprintf(stderr, "[%i] %i, ", i, r->senderWindowBuffer[i].acknowledged);
+		}
 //		fprintf(stderr, "\n");
 
 //		printBuffers(r);
@@ -308,6 +304,12 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 //		}
 		r->receiverWindowBuffer[pkt->seqno] = *packetBuffer;
 
+
+		if (r->receiver.last_frame_received == pkt->seqno) {
+			r->receiver.last_frame_received = compute_LFR(r);
+	//		r->receiver.last_frame_received += 1;
+		}
+
 //		if (pkt->seqno == 3 || pkt->seqno == 4) {
 //			int i;
 //			for (i = 0; i < 4; i++) {
@@ -320,8 +322,8 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 		packet_t *ackPacket = malloc(sizeof (struct packet));
 		ackPacket->len = ACK_PACKET_HEADER;
-		printBuffers(r);
-		fprintf(stderr, "\n compute_LFR(r)+1: %i, last_frame_received: %i", compute_LFR(r), r->receiver.last_frame_received);
+//		printBuffers(r);
+//		fprintf(stderr, "\n compute_LFR(r)+1: %i, last_frame_received: %i", compute_LFR(r), r->receiver.last_frame_received);
 		ackPacket->ackno = r->receiver.last_frame_received;
 		preparePacketForSending(ackPacket);
 		conn_sendpkt(r->c, ackPacket, ackPacket->len);
