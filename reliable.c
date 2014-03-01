@@ -190,6 +190,15 @@ int compute_LFR(rel_t* r) {
 
 void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
+	int checksum = pkt->cksum;
+	pkt->cksum = 0;
+	int compare_checksum = cksum(pkt, ntohs(pkt->len));
+	convertPacketToNetworkByteOrder(pkt);
+	if (compare_checksum != checksum) {
+		fprintf(stderr, "Checksums do not match. Packet corruption. Kill Connection. \n");
+		return;
+	}
+
 //	if (pkt->seqno == 2 && allow == 0) {
 //		allow = 1;
 //		return;
@@ -231,14 +240,6 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 //	fprintf(stderr, "Data: %s, Checksum: %i", pkt->data, pkt->cksum);
 
-	int checksum = pkt->cksum;
-	pkt->cksum = 0;
-	int compare_checksum = cksum(pkt, ntohs(pkt->len));
-	convertPacketToNetworkByteOrder(pkt);
-	if (compare_checksum != checksum) {
-		fprintf(stderr, "Checksums do not match. Packet corruption. Kill Connection. \n");
-		return;
-	}
 //	fprintf(stderr, "in receiving, seqno is %i, length is %i \n", pkt->seqno, pkt->len);
 
 	r->receiver.packet = *pkt;
