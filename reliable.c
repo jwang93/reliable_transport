@@ -68,7 +68,7 @@ void initialize(rel_t *r, int windowSize) {
 	r->sender.packet.ackno = 1;
 	r->sender.packet.seqno = 0;
 	r->sender.last_frame_sent = -1;   //makes sense because you want to start at 0
-	r->sender.packet.data[500] = '\0'; //trying to initialize sender packet data
+//	r->sender.packet.data[500] = '\0'; //trying to initialize sender packet data
 	r->sender.expected_ack = 0;
 	r->sender.buffer_position = 0;
 	r->receiver.packet.cksum = 0;
@@ -76,7 +76,7 @@ void initialize(rel_t *r, int windowSize) {
 	r->receiver.packet.ackno = 1;
 	r->receiver.packet.seqno = 0;		//should this seqno be = 1?
 	r->receiver.last_frame_received = 0;
-	r->receiver.packet.data[500] = '\0';//trying to initialize receiver packet data
+//	r->receiver.packet.data[500] = '\0';//trying to initialize receiver packet data
 	r->receiver.ackno = 0;
 	r->receiver.buffer_position = 0;
 	r->windowSize = windowSize;
@@ -352,10 +352,23 @@ void rel_output(rel_t *r) {
 			if (r->receiverWindowBuffer[i].outputted == 0) {
 				struct WindowBuffer *packet = malloc(sizeof(struct WindowBuffer));
 				packet = &r->receiverWindowBuffer[i];
-				fprintf(stderr, "Size of packet: %i, Data from packet: %s", packet->ptr->len, packet->ptr->data);
+//				fprintf(stderr, "Size of packet: %i, Data from packet: %s", packet->ptr->len, packet->ptr->data);
+				packet->ptr->data[packet->ptr->len - DATA_PACKET_HEADER] = '\0';
+				packet->ptr->len++;
+
+
+				int j;
+				int start = packet->ptr->len - DATA_PACKET_HEADER;
+				for (j = start; j < MAX_DATA_SIZE; j++) {
+					packet->ptr->data[j] = '\0';
+				}
+
+//				fprintf(stderr, "Size of packet: %i, Data from packet: %s", packet->ptr->len, packet->ptr->data);
+
+
 				int val = conn_output(r->c, packet->ptr->data, packet->ptr->len);
-				fprintf(stderr, "Return val from conn_output: %i\n", val);
-				memset(packet, 0, sizeof(packet));
+//				fprintf(stderr, "Return val from conn_output: %i\n", val);
+//				memset(packet, "0", sizeof(packet));
 				r->receiver.buffer_position++;
 				r->receiverWindowBuffer[i].outputted = 1;
 			}
