@@ -169,13 +169,12 @@ void preparePacketForSending(packet_t *pkt) {
 	if (packetLength >= DATA_PACKET_HEADER) {
 		pkt->seqno = htons(pkt->seqno);
 	}
-	pkt->cksum = htons(cksum(pkt->data, packetLength));
+	pkt->cksum = cksum(pkt, packetLength);
 }
 void convertPacketToNetworkByteOrder(packet_t *pkt) {
 	pkt->len = ntohs(pkt->len);
 	pkt->ackno = ntohs(pkt->ackno);
 	pkt->seqno = ntohs(pkt->seqno);
-	pkt->cksum = ntohs(pkt->cksum);
 }
 
 // This method retransmits the packet w/ given seqno
@@ -207,7 +206,8 @@ int compute_LFR(rel_t* r) {
 
 void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
-	convertPacketToNetworkByteOrder(pkt);
+
+
 
 //	if (pkt->seqno == 2 && allow == 0) {
 //		allow = 1;
@@ -221,24 +221,27 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 //	}
 
 
-	if (pkt->len >= DATA_PACKET_HEADER) {
-		int num = rand() % 4;
-		if (num < 3) {
-			fprintf(stderr, "Packet[%i] dropped\n", pkt->seqno);
-			return;
-		}
-	}
+//	if (pkt->len >= DATA_PACKET_HEADER) {
+//		int num = rand() % 4;
+//		if (num < 3) {
+//			fprintf(stderr, "Packet[%i] dropped\n", pkt->seqno);
+//			return;
+//		}
+//	}
 
 //	fprintf(stderr, "Data: %s, Checksum: %i", pkt->data, pkt->cksum);
 
 	int checksum = pkt->cksum;
-	int compare_checksum = cksum(pkt->data, pkt->len);
-
+	pkt->cksum = 0;
+	int compare_checksum = cksum(pkt, ntohs(pkt->len));
 //	fprintf(stderr, "Looking for where seg fault happens.\n");
 
+	convertPacketToNetworkByteOrder(pkt);
 
 	if (compare_checksum != checksum) {
 		fprintf(stderr, "Checksums do not match. Packet corruption. Kill Connection. \n");
+//		fprintf(stderr, "Checksum from incoming packet: %i and checksum calculated is: %i", checksum, compare_checksum);
+//		fprintf(stderr, "Other failed packet data.  ackno: %i, data: %s, len: %i, seqno: %i", pkt->ackno, pkt->data, pkt->len, pkt->seqno);
 		return;
 	}
 //	fprintf(stderr, "in receiving, seqno is %i, length is %i \n", pkt->seqno, pkt->len);
@@ -362,7 +365,6 @@ void rel_read(rel_t *s) {
 		s->sender.packet.seqno = s->sender.last_frame_sent;
 		s->sender.expected_ack = s->sender.packet.seqno + 1;
 		s->sender.packet.ackno = s->sender.packet.seqno + 1; //ackno should always be 1 higher than seqno
-		s->sender.packet.cksum = cksum(&s->sender.packet, s->sender.packet.len);
 
 		preparePacketForSending(&(s->sender.packet));
 
