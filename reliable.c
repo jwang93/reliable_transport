@@ -21,6 +21,7 @@
 struct Sender {
 	int last_frame_sent;
 	int expected_ack;
+	int buffer_position;
 	packet_t packet;
 };
 
@@ -28,6 +29,7 @@ struct Receiver {
 	int largest_acceptable_seqno;   //going to be needed once we have a RWS/SWS
 	int last_frame_received;
 	int ackno;
+	int buffer_position;
 	packet_t packet;
 };
 
@@ -68,6 +70,7 @@ void initialize(rel_t *r, int windowSize) {
 	r->sender.last_frame_sent = -1;   //makes sense because you want to start at 0
 	r->sender.packet.data[500] = '\0'; //trying to initialize sender packet data
 	r->sender.expected_ack = 0;
+	r->sender.buffer_position = 0;
 	r->receiver.packet.cksum = 0;
 	r->receiver.packet.len = 0;
 	r->receiver.packet.ackno = 1;
@@ -75,6 +78,7 @@ void initialize(rel_t *r, int windowSize) {
 	r->receiver.last_frame_received = 0;
 	r->receiver.packet.data[500] = '\0';//trying to initialize receiver packet data
 	r->receiver.ackno = 0;
+	r->receiver.buffer_position = 0;
 	r->windowSize = windowSize;
 	memset(&r->senderWindowBuffer, 0, sizeof(&r->senderWindowBuffer));
 	memset(&r->receiverWindowBuffer, 0, sizeof(&r->receiverWindowBuffer));
@@ -175,7 +179,8 @@ void retransmit(rel_t *s, int seqno) {
 
 int compute_LFR(rel_t* r) {
 	int i;
-	for (i = 0; i <= r->windowSize; i++) { //might be too small...
+	int shift = r->receiver.buffer_position;
+	for (i = shift; i <= r->windowSize + shift; i++) { //might be too small...
 		if (r->receiverWindowBuffer[i].isFull == 0) {
 			return i;
 		}
@@ -199,6 +204,25 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 //	}
 
 
+//	/*
+//	 * Specific Test Case
+//	 * 1. Tests the receiver window buffer
+//	 * 2. Rejects packets when it hasn't received the appropriate
+//	 * lower sequence packet and is out of buffer space
+//	 * 3. You can see this only when sender window is larger than
+//	 * receiver window.
+//	 */
+//	if (pkt->seqno == 2) {
+//		return;
+//	}
+
+	/*
+	 * General Test Case
+	 * 1. Drops 75% of packets
+	 * 2. Tests retransmission of packets
+	 * 3. Tests correct ordering of packets
+	 * 4. Tests sliding of sender window when using a small window size
+	 */
 	if (pkt->len >= DATA_PACKET_HEADER) {
 		int num = rand() % 4;
 		if (num < 3) {
@@ -228,7 +252,12 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 	if (pkt->len == ACK_PACKET_HEADER) {
 		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
 		int index = pkt->ackno;
+		fprintf(stderr, "Code gets here!\n");
 		r->senderWindowBuffer[index-1].acknowledged = 1; //everything lower than ackno should be acknowledged
+
+		if (pkt->ackno > r->sender.buffer_position) {
+			r->sender.buffer_position = pkt->ackno;
+		}
 
 		int i;
 		for (i = 0; i < index; i++) {
@@ -240,6 +269,11 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 		if (r->receiverWindowBuffer[pkt->seqno].isFull == 1) {
 			fprintf(stderr, "Throwing away pkt[%i] because it's dup\n", pkt->seqno);
+			return;
+		}
+
+		if (pkt->seqno >= r->windowSize + r->receiver.buffer_position) {
+			fprintf(stderr, "**** You have exceeded the receiver's window size. Packet will be dropped and not buffered. **** \n");
 			return;
 		}
 
@@ -284,9 +318,7 @@ void rel_read(rel_t *s) {
 		s->sender.packet.ackno = s->sender.packet.seqno + 1; //ackno should always be 1 higher than seqno
 		s->sender.packet.cksum = cksum(&s->sender.packet, s->sender.packet.len);
 
-
-		fprintf(stderr, "seqno: %i, windowSize: %i\n", s->sender.packet.seqno, s->windowSize);
-		if (s->sender.packet.seqno > s->windowSize || s->sender.packet.seqno == s->windowSize) {
+		if (s->sender.packet.seqno > s->windowSize + s->sender.buffer_position || s->sender.packet.seqno == s->windowSize + s->sender.buffer_position) {
 			fprintf(stderr, "**** You have exceeded the sender's window size. Packet will not be sent. **** \n");
 			s->sender.last_frame_sent--;
 			return;
@@ -311,7 +343,8 @@ void rel_read(rel_t *s) {
 void rel_output(rel_t *r) {
 
 	int i;
-	for (i = 0; i < r->windowSize; i++) {
+	int shift = r->receiver.buffer_position;
+	for (i = shift; i < r->windowSize + shift; i++) {
 		if (r->receiverWindowBuffer[i].isFull == 0) {
 			return;
 		}
@@ -320,6 +353,7 @@ void rel_output(rel_t *r) {
 			if (r->receiverWindowBuffer[i].outputted == 0) {
 				struct WindowBuffer *packet = &r->receiverWindowBuffer[i];
 				conn_output(r->c, packet->ptr->data, packet->ptr->len);
+				r->receiver.buffer_position++;
 				r->receiverWindowBuffer[i].outputted = 1;
 			}
 		}
@@ -332,7 +366,8 @@ void rel_timer() {
 	timestamp++;
 
 	int i;
-	for (i = 0; i < r->windowSize; i++) {
+	int shift = r->sender.buffer_position;
+	for (i = shift; i < r->windowSize + shift; i++) {
 		if (r->senderWindowBuffer[i].isFull == 1) {  //you have already sent packet[i]
 			if (r->senderWindowBuffer[i].acknowledged == 0) { // you have not received ack for packet[i]
 				if ((timestamp - r->senderWindowBuffer[i].timeStamp) > 5) { //it has been more than 5 time periods
