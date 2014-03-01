@@ -190,8 +190,6 @@ int compute_LFR(rel_t* r) {
 
 void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
-	convertPacketToNetworkByteOrder(pkt);
-
 //	if (pkt->seqno == 2 && allow == 0) {
 //		allow = 1;
 //		return;
@@ -234,8 +232,9 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 //	fprintf(stderr, "Data: %s, Checksum: %i", pkt->data, pkt->cksum);
 
 	int checksum = pkt->cksum;
-	int compare_checksum = cksum(pkt->data, pkt->len);
-
+	pkt->cksum = 0;
+	int compare_checksum = cksum(pkt, ntohs(pkt->len));
+	convertPacketToNetworkByteOrder(pkt);
 	if (compare_checksum != checksum) {
 		fprintf(stderr, "Checksums do not match. Packet corruption. Kill Connection. \n");
 		return;
@@ -292,7 +291,10 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		packet_t *ackPacket = malloc(sizeof (struct packet));
 		ackPacket->len = ACK_PACKET_HEADER;
 		ackPacket->ackno = r->receiver.last_frame_received;
+		int ackLength = ackPacket->len;
 		preparePacketForSending(ackPacket);
+		ackPacket->cksum = 0;
+		ackPacket->cksum = cksum(ackPacket, ackLength);
 		conn_sendpkt(r->c, ackPacket, ackPacket->len);
 	}
 
@@ -315,7 +317,6 @@ void rel_read(rel_t *s) {
 		s->sender.packet.seqno = s->sender.last_frame_sent;
 		s->sender.expected_ack = s->sender.packet.seqno + 1;
 		s->sender.packet.ackno = s->sender.packet.seqno + 1; //ackno should always be 1 higher than seqno
-		s->sender.packet.cksum = cksum(&s->sender.packet, s->sender.packet.len);
 
 		if (s->sender.packet.seqno > s->windowSize + s->sender.buffer_position || s->sender.packet.seqno == s->windowSize + s->sender.buffer_position) {
 			fprintf(stderr, "**** You have exceeded the sender's window size. Packet will not be sent. **** \n");
@@ -324,8 +325,10 @@ void rel_read(rel_t *s) {
 		}
 
 		int positionInArray = s->sender.packet.seqno;
+		int length = s->sender.packet.len;
 		preparePacketForSending(&(s->sender.packet));
-
+		s->sender.packet.cksum = 0;
+		s->sender.packet.cksum = cksum(&s->sender.packet, length);
 		packet_t *sendingPacketCopy = malloc(sizeof s->sender.packet);
 		memcpy(sendingPacketCopy, &s->sender.packet, sizeof s->sender.packet);
 
