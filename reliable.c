@@ -367,6 +367,7 @@ void rel_output(rel_t *r) {
 
 
 				int val = conn_output(r->c, packet->ptr->data, packet->ptr->len);
+				free(packet->ptr);
 //				fprintf(stderr, "Return val from conn_output: %i\n", val);
 //				memset(packet, "0", sizeof(packet));
 				r->receiver.buffer_position++;
