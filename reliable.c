@@ -252,7 +252,6 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 	if (pkt->len == ACK_PACKET_HEADER) {
 		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
 		int index = pkt->ackno;
-		fprintf(stderr, "Code gets here!\n");
 		r->senderWindowBuffer[index-1].acknowledged = 1; //everything lower than ackno should be acknowledged
 
 		if (pkt->ackno > r->sender.buffer_position) {
