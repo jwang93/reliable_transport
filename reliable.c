@@ -282,6 +282,13 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		packetBuffer->isFull = 1;
 		packetBuffer->ptr = receivingPacketCopy;
 		packetBuffer->timeStamp = timestamp;	//will need to change later
+
+		int j;
+		int start = packetBuffer->ptr->len - DATA_PACKET_HEADER;
+		for (j = start; j < MAX_DATA_SIZE; j++) {
+			packetBuffer->ptr->data[j] = '\0';
+		}
+
 		r->receiverWindowBuffer[pkt->seqno] = *packetBuffer;
 
 		if (r->receiver.last_frame_received == pkt->seqno) {
@@ -354,7 +361,8 @@ void rel_output(rel_t *r) {
 
 		if (r->receiverWindowBuffer[i].isFull == 1) {
 			if (r->receiverWindowBuffer[i].outputted == 0) {
-				struct WindowBuffer *packet = &r->receiverWindowBuffer[i];
+				struct WindowBuffer *packet = malloc(sizeof(struct WindowBuffer));
+				packet = &r->receiverWindowBuffer[i];
 				conn_output(r->c, packet->ptr->data, packet->ptr->len);
 				r->receiver.buffer_position++;
 				r->receiverWindowBuffer[i].outputted = 1;
