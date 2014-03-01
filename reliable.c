@@ -216,20 +216,20 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 //		return;
 //	}
 
-	/*
-	 * General Test Case
-	 * 1. Drops 75% of packets
-	 * 2. Tests retransmission of packets
-	 * 3. Tests correct ordering of packets
-	 * 4. Tests sliding of sender window when using a small window size
-	 */
-	if (pkt->len >= DATA_PACKET_HEADER) {
-		int num = rand() % 4;
-		if (num < 3) {
-			fprintf(stderr, "Packet[%i] dropped\n", pkt->seqno);
-			return;
-		}
-	}
+//	/*
+//	 * General Test Case
+//	 * 1. Drops 75% of packets
+//	 * 2. Tests retransmission of packets
+//	 * 3. Tests correct ordering of packets
+//	 * 4. Tests sliding of sender window when using a small window size
+//	 */
+//	if (pkt->len >= DATA_PACKET_HEADER) {
+//		int num = rand() % 4;
+//		if (num < 3) {
+//			fprintf(stderr, "Packet[%i] dropped\n", pkt->seqno);
+//			return;
+//		}
+//	}
 
 //	fprintf(stderr, "Data: %s, Checksum: %i", pkt->data, pkt->cksum);
 
@@ -250,7 +250,7 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 //	}
 
 	if (pkt->len == ACK_PACKET_HEADER) {
-		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
+//		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
 		int index = pkt->ackno;
 		r->senderWindowBuffer[index-1].acknowledged = 1; //everything lower than ackno should be acknowledged
 
@@ -267,12 +267,12 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 	if (pkt->len >= DATA_PACKET_HEADER) {
 
 		if (r->receiverWindowBuffer[pkt->seqno].isFull == 1) {
-			fprintf(stderr, "Throwing away pkt[%i] because it's dup\n", pkt->seqno);
+//			fprintf(stderr, "Throwing away pkt[%i] because it's dup\n", pkt->seqno);
 			return;
 		}
 
 		if (pkt->seqno >= r->windowSize + r->receiver.buffer_position) {
-			fprintf(stderr, "**** You have exceeded the receiver's window size. Packet will be dropped and not buffered. **** \n");
+//			fprintf(stderr, "**** You have exceeded the receiver's window size. Packet will be dropped and not buffered. **** \n");
 			return;
 		}
 
@@ -350,8 +350,12 @@ void rel_output(rel_t *r) {
 
 		if (r->receiverWindowBuffer[i].isFull == 1) {
 			if (r->receiverWindowBuffer[i].outputted == 0) {
-				struct WindowBuffer *packet = &r->receiverWindowBuffer[i];
-				conn_output(r->c, packet->ptr->data, packet->ptr->len);
+				struct WindowBuffer *packet = malloc(sizeof(struct WindowBuffer));
+				packet = &r->receiverWindowBuffer[i];
+				fprintf(stderr, "Size of packet: %i, Data from packet: %s", packet->ptr->len, packet->ptr->data);
+				int val = conn_output(r->c, packet->ptr->data, packet->ptr->len);
+				fprintf(stderr, "Return val from conn_output: %i\n", val);
+				memset(packet, 0, sizeof(packet));
 				r->receiver.buffer_position++;
 				r->receiverWindowBuffer[i].outputted = 1;
 			}
@@ -370,7 +374,7 @@ void rel_timer() {
 		if (r->senderWindowBuffer[i].isFull == 1) {  //you have already sent packet[i]
 			if (r->senderWindowBuffer[i].acknowledged == 0) { // you have not received ack for packet[i]
 				if ((timestamp - r->senderWindowBuffer[i].timeStamp) > 5) { //it has been more than 5 time periods
-					fprintf(stderr, "Retransmitted on location: %i\n", i);
+//					fprintf(stderr, "Retransmitted on location: %i\n", i);
 					retransmit(r, i);
 				}
 			}
