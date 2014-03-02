@@ -30,6 +30,7 @@ struct Receiver {
 	int last_frame_received;
 	int ackno;
 	int buffer_position;
+	int max_ack;
 	packet_t packet;
 };
 
@@ -78,6 +79,7 @@ void initialize(rel_t *r, int windowSize) {
 	r->receiver.last_frame_received = 0;
 	r->receiver.packet.data[500] = '\0';//trying to initialize receiver packet data
 	r->receiver.ackno = 0;
+	r->receiver.max_ack = 0;
 	r->receiver.buffer_position = 0;
 	r->windowSize = windowSize;
 	memset(&r->senderWindowBuffer, 0, sizeof(&r->senderWindowBuffer));
@@ -165,11 +167,26 @@ void preparePacketForSending(packet_t *pkt) {
 	}
 	pkt->cksum = htons(cksum(pkt->data, packetLength));
 }
+
 void convertPacketToNetworkByteOrder(packet_t *pkt) {
 	pkt->len = ntohs(pkt->len);
 	pkt->ackno = ntohs(pkt->ackno);
 	pkt->seqno = ntohs(pkt->seqno);
 	pkt->cksum = ntohs(pkt->cksum);
+}
+
+void resendAck(rel_t *r, int ackVal) {
+
+	packet_t *ackPacket = malloc(sizeof (struct packet));
+	ackPacket->len = ACK_PACKET_HEADER;
+	ackPacket->ackno = ackVal;
+	int ackLength = ackPacket->len;
+	fprintf(stderr, "Sending the ack for: %i\n", ackPacket->ackno);
+
+	preparePacketForSending(ackPacket);
+	ackPacket->cksum = 0;
+	ackPacket->cksum = cksum(ackPacket, ackLength);
+	conn_sendpkt(r->c, ackPacket, ackPacket->len);
 }
 
 void retransmit(rel_t *s, int seqno) {
@@ -199,58 +216,10 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		return;
 	}
 
-//	if (pkt->seqno == 2 && allow == 0) {
-//		allow = 1;
-//		return;
-//	}
-//
-//
-//	if (pkt->seqno == 5 && allow2 == 0) {
-//		allow2 = 1;
-//		return;
-//	}
-
-
-//	/*
-//	 * Specific Test Case
-//	 * 1. Tests the receiver window buffer
-//	 * 2. Rejects packets when it hasn't received the appropriate
-//	 * lower sequence packet and is out of buffer space
-//	 * 3. You can see this only when sender window is larger than
-//	 * receiver window.
-//	 */
-//	if (pkt->seqno == 2) {
-//		return;
-//	}
-
-	/*
-	 * General Test Case
-	 * 1. Drops 75% of packets
-	 * 2. Tests retransmission of packets
-	 * 3. Tests correct ordering of packets
-	 * 4. Tests sliding of sender window when using a small window size
-	 */
-	if (pkt->len >= DATA_PACKET_HEADER) {
-		int num = rand() % 4;
-		if (num < 3) {
-			fprintf(stderr, "Packet[%i] dropped\n", pkt->seqno);
-			return;
-		}
-	}
-
-//	fprintf(stderr, "Data: %s, Checksum: %i", pkt->data, pkt->cksum);
-
-//	fprintf(stderr, "in receiving, seqno is %i, length is %i \n", pkt->seqno, pkt->len);
-
 	r->receiver.packet = *pkt;
 
-//	if (r->windowBuffer[positionInArray].isFull == 1 && pkt->len != ACK_PACKET_HEADER) {
-//		fprintf(stderr, "Dropped the packet that should have been at position: %i \n", positionInArray);
-//		return;
-//	}
-
 	if (pkt->len == ACK_PACKET_HEADER) {
-		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
+//		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
 		int index = pkt->ackno;
 		r->senderWindowBuffer[index-1].acknowledged = 1; //everything lower than ackno should be acknowledged
 
@@ -268,6 +237,11 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 		if (r->receiverWindowBuffer[pkt->seqno].isFull == 1) {
 			fprintf(stderr, "Throwing away pkt[%i] because it's dup\n", pkt->seqno);
+
+			if (pkt->seqno < r->receiver.max_ack) {
+//				fprintf(stderr, "Resend ack for current max_ack: %i. This packet seqno is: %i", r->receiver.max_ack, pkt->seqno);
+				resendAck(r, r->receiver.max_ack);
+			}
 			return;
 		}
 
@@ -300,9 +274,16 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		ackPacket->len = ACK_PACKET_HEADER;
 		ackPacket->ackno = r->receiver.last_frame_received;
 		int ackLength = ackPacket->len;
+//		fprintf(stderr, "Sending the ack for: %i\n", ackPacket->ackno);
+
+		if (ackPacket->ackno > r->receiver.max_ack) {
+			r->receiver.max_ack = ackPacket->ackno;
+		}
+
 		preparePacketForSending(ackPacket);
 		ackPacket->cksum = 0;
 		ackPacket->cksum = cksum(ackPacket, ackLength);
+
 		conn_sendpkt(r->c, ackPacket, ackPacket->len);
 	}
 
@@ -326,6 +307,8 @@ void rel_read(rel_t *s) {
 		s->sender.expected_ack = s->sender.packet.seqno + 1;
 		s->sender.packet.ackno = s->sender.packet.seqno + 1; //ackno should always be 1 higher than seqno
 
+		fprintf(stderr, "Sender packet seqno: %i, buffer position: %i\n", s->sender.packet.seqno, s->sender.buffer_position);
+		fprintf(stderr, "Window size: %i\n", s->windowSize);
 		if (s->sender.packet.seqno > s->windowSize + s->sender.buffer_position || s->sender.packet.seqno == s->windowSize + s->sender.buffer_position) {
 			fprintf(stderr, "**** You have exceeded the sender's window size. Packet will not be sent. **** \n");
 			s->sender.last_frame_sent--;
