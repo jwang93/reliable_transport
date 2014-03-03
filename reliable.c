@@ -63,14 +63,12 @@ void initialize(rel_t *r, int windowSize) {
 	r->sender.packet.ackno = 1;
 	r->sender.packet.seqno = 0;
 	r->sender.last_frame_sent = -1;   //makes sense because you want to start at 0
-	r->sender.packet.data[500] = '\0'; //trying to initialize sender packet data
 	r->sender.buffer_position = 0;
 	r->receiver.packet.cksum = 0;
 	r->receiver.packet.len = 0;
 	r->receiver.packet.ackno = 1;
 	r->receiver.packet.seqno = 0;		//should this seqno be = 1?
 	r->receiver.last_frame_received = 0;
-	r->receiver.packet.data[500] = '\0';//trying to initialize receiver packet data
 	r->receiver.ackno = 0;
 	r->receiver.max_ack = 0;
 	r->receiver.buffer_position = 0;
@@ -143,13 +141,16 @@ void preparePacketForSending(packet_t *pkt) {
 	pkt->cksum = htons(cksum(pkt->data, packetLength));
 }
 
-void convertPacketToNetworkByteOrder(packet_t *pkt) {
+void convertPacketFromNetworkByteOrder(packet_t *pkt) {
 	pkt->len = ntohs(pkt->len);
 	pkt->ackno = ntohs(pkt->ackno);
 	pkt->seqno = ntohs(pkt->seqno);
 	pkt->cksum = ntohs(pkt->cksum);
 }
 
+/*
+ * Method to resend ack packets when they were dropped.
+ */
 void retransmit_ack(rel_t *r, int ackVal) {
 	packet_t *ackPacket = malloc(sizeof (struct packet));
 	ackPacket->len = ACK_PACKET_HEADER;
@@ -162,15 +163,24 @@ void retransmit_ack(rel_t *r, int ackVal) {
 	conn_sendpkt(r->c, ackPacket, ackPacket->len);
 }
 
+/*
+ * Method to resend data packets when they were dropped.
+ * This method is called in rel_timer().
+ */
 void retransmit_data(rel_t *s, int seqno) {
 	struct WindowBuffer *packet = &s->senderWindowBuffer[seqno];
 	conn_sendpkt(s->c, packet->ptr, packet->ptr->len);
 }
 
+/*
+ * Method used to compute the correct cumulative ack number.
+ * Gets tricky when frames come out of order.
+ */
 int compute_LFR(rel_t *r) {
+	//Iterate through a section of the buffer, looking for the first place a packet is missing
 	int i;
 	int shift = r->receiver.buffer_position;
-	for (i = shift; i <= r->windowSize + shift; i++) { //might be too small...
+	for (i = shift; i <= r->windowSize + shift; i++) {
 		if (r->receiverWindowBuffer[i].isFull == 0) {
 			return i;
 		}
@@ -179,14 +189,14 @@ int compute_LFR(rel_t *r) {
 }
 
 void send_data_pkt(rel_t *s, int data_size) {
-	s->sender.last_frame_sent++;
 
+	//update sender state when a new data packet is sent
+	s->sender.last_frame_sent++;
 	s->sender.packet.len = data_size + DATA_PACKET_HEADER;
 	s->sender.packet.seqno = s->sender.last_frame_sent;
 	s->sender.packet.ackno = s->sender.packet.seqno + 1; //ackno should always be 1 higher than seqno
 
-//	fprintf(stderr, "Sender packet seqno: %i, buffer position: %i\n", s->sender.packet.seqno, s->sender.buffer_position);
-//	fprintf(stderr, "Window size: %i\n", s->windowSize);
+	//alert the user when user has exceeded sender's window size
 	if (s->sender.packet.seqno > s->windowSize + s->sender.buffer_position || s->sender.packet.seqno == s->windowSize + s->sender.buffer_position) {
 		fprintf(stderr, "**** You have exceeded the sender's window size. Packet will not be sent. **** \n");
 		s->sender.last_frame_sent--;
@@ -198,14 +208,19 @@ void send_data_pkt(rel_t *s, int data_size) {
 	preparePacketForSending(&(s->sender.packet));
 	s->sender.packet.cksum = 0;
 	s->sender.packet.cksum = cksum(&s->sender.packet, length);
+
+	//prepare a copy of the packet along with other state to store in sender buffer
 	packet_t *sendingPacketCopy = malloc(sizeof s->sender.packet);
 	memcpy(sendingPacketCopy, &s->sender.packet, sizeof s->sender.packet);
-
 	struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
 	packetBuffer->isFull = 1;
 	packetBuffer->ptr = sendingPacketCopy;
 	packetBuffer->timeStamp = timestamp;
+
+	//place the WindowBuffer in the buffer array
 	s->senderWindowBuffer[positionInArray] = *packetBuffer;
+
+	//send the packet over network
 	conn_sendpkt(s->c, &s->sender.packet, s->sender.packet.len);
 	memset(&s->sender.packet, 0, sizeof(&s->sender.packet));
 
@@ -213,10 +228,11 @@ void send_data_pkt(rel_t *s, int data_size) {
 
 void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
+	// Compare checksums to detect packet corruption
 	int checksum = pkt->cksum;
 	pkt->cksum = 0;
 	int compare_checksum = cksum(pkt, ntohs(pkt->len));
-	convertPacketToNetworkByteOrder(pkt);
+	convertPacketFromNetworkByteOrder(pkt);
 	if (compare_checksum != checksum) {
 		fprintf(stderr, "Checksums do not match. Packet corruption. Kill Connection. \n");
 		return;
@@ -224,36 +240,52 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 	r->receiver.packet = *pkt;
 
+	// CASE 1: ACK packet
 	if (pkt->len == ACK_PACKET_HEADER) {
 //		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
 		int index = pkt->ackno;
-		r->senderWindowBuffer[index-1].acknowledged = 1; //everything lower than ackno should be acknowledged
+		r->senderWindowBuffer[index-1].acknowledged = 1;
 
-		if (pkt->ackno > r->sender.buffer_position) {
-			r->sender.buffer_position = pkt->ackno;
-		}
-
+		//make sure to acknowledge everything below the most recent ackno
 		int i;
 		for (i = 0; i < index; i++) {
 			r->senderWindowBuffer[i].acknowledged = 1;
 		}
+
+		//move the sender's buffer position pointer
+		if (pkt->ackno > r->sender.buffer_position) {
+			r->sender.buffer_position = pkt->ackno;
+		}
 	}
 
+	// CASE 2: DATA packet
 	if (pkt->len >= DATA_PACKET_HEADER) {
 
+		// You are getting duplicate packets by nature of cumulative ack
 		if (r->receiverWindowBuffer[pkt->seqno].isFull == 1) {
 			fprintf(stderr, "Throwing away pkt[%i] because it's dup\n", pkt->seqno);
 
+			/* If the seqno of packet is less than the max ack the receiver has sent
+			 * that means an ack to the sender was dropped. Retransmit.
+			 */
 			if (pkt->seqno < r->receiver.max_ack) {
-//				fprintf(stderr, "Resend ack for current max_ack: %i. This packet seqno is: %i", r->receiver.max_ack, pkt->seqno);
 				retransmit_ack(r, r->receiver.max_ack);
 			}
 			return;
 		}
 
+		// Alerting the user when the receiver's window buffer is full.
 		if (pkt->seqno >= r->windowSize + r->receiver.buffer_position) {
 			fprintf(stderr, "**** You have exceeded the receiver's window size. Packet will be dropped and not buffered. **** \n");
 			return;
+		}
+
+
+		// Clear out the old data from the packet buffer
+		int j;
+		int start = pkt->len - DATA_PACKET_HEADER;
+		for (j = start; j < MAX_DATA_SIZE; j++) {
+			pkt->data[j] = '\0';
 		}
 
 		packet_t *receivingPacketCopy = malloc(sizeof (struct packet));
@@ -261,13 +293,14 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
 		packetBuffer->isFull = 1;
 		packetBuffer->ptr = receivingPacketCopy;
-		packetBuffer->timeStamp = timestamp;	//will need to change later
+		packetBuffer->timeStamp = timestamp;
 
-		int j;
-		int start = packetBuffer->ptr->len - DATA_PACKET_HEADER;
-		for (j = start; j < MAX_DATA_SIZE; j++) {
-			packetBuffer->ptr->data[j] = '\0';
-		}
+//		// Clear out the old data from the packet buffer
+//		int j;
+//		int start = packetBuffer->ptr->len - DATA_PACKET_HEADER;
+//		for (j = start; j < MAX_DATA_SIZE; j++) {
+//			packetBuffer->ptr->data[j] = '\0';
+//		}
 
 		r->receiverWindowBuffer[pkt->seqno] = *packetBuffer;
 
