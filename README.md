@@ -3,16 +3,12 @@ reliable_transport
 
 ##CS 356, Lab 1
 
+README
 
-####Known Bugs:
+Jay Wang (jmw86)
+Harris Osserman (hgo)
 
-1. can't handle window size of 1 right now... that's because we're not preventing the sender from sending stuff out of window 
-     -- can be handled by imposing a restriction on what can be taken in 
-     -- need to figure out good solution for both sender and receiver 
-     -- there's the hack solution where you allow it 1k size and you just slide the start point down the array 
 
-2. cksum doesn't work with ./reference...? don't know why. also don't know how to use ./reference with window size  (put the argument in earlier)
-	-- must be because we are computing checksums in different ways 
-	-- checksum is supposed to be computed on the entire packet 
+Why our program cannot communicate with the Reference program:
 
-3. need to clear the memory buffer space... right now you can't send words of different lengths.. it gets all garbled 
+Our Reliable program is able to receive packets sent by Reference.  But, when Reliable sends the ack packets to Reference, Reference is unable to read the ack number from our ack packet.  We tried debugging this by putting Reference in debug mode, but regardless of what value our ack number was in the packet, Reference always thought that the ack number was 65536.  We even tried specifically setting the ack number to be 5 and 300, but the ack number received by Reference was always 65536.  We believe that this was occurring because Reliable was not reading the correct memory location of the packet that we sent.  Unfortunately, we were unable to debug this further because Reliable is a "black box," and we are unable to see the implementation details of the program. 
