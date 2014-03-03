@@ -301,16 +301,18 @@ void rel_read(rel_t *s) {
 	int data_size = 0;
 	data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
 
+	fprintf(stderr, "Data size: %i\n", data_size);
 	if (data_size == 0) {
 		fprintf(stderr, "Data size of 0!\n");
 		return;
 	}
 
-	else if (data_size > 0 && data_size <= MAX_DATA_SIZE) {
+	else if (data_size > 0 && data_size <= MAX_DATA_SIZE - 1) {
+		fprintf(stderr, "Called!\n");
 		send_data_pkt(s, data_size);
 	}
 
-	else if (data_size > MAX_DATA_SIZE) {
+	else if (data_size >= MAX_DATA_SIZE) {
 		fprintf(stderr, "Data needs to be split into multiple packets.\n");
 	}
 }
@@ -326,11 +328,14 @@ void rel_output(rel_t *r) {
 
 		if (r->receiverWindowBuffer[i].isFull == 1) {
 			if (r->receiverWindowBuffer[i].outputted == 0) {
+				int availableSpace = conn_bufspace(r->c);
 				struct WindowBuffer *packet = malloc(sizeof(struct WindowBuffer));
 				packet = &r->receiverWindowBuffer[i];
-				conn_output(r->c, packet->ptr->data, packet->ptr->len);
-				r->receiver.buffer_position++;
-				r->receiverWindowBuffer[i].outputted = 1;
+				if (availableSpace >= packet->ptr->len) {
+					conn_output(r->c, packet->ptr->data, packet->ptr->len);
+					r->receiver.buffer_position++;
+					r->receiverWindowBuffer[i].outputted = 1;
+				}
 			}
 		}
 	}
