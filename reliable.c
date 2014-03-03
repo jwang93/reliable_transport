@@ -196,6 +196,7 @@ void send_data_pkt(rel_t *s, int data_size) {
 	s->sender.packet.seqno = s->sender.last_frame_sent;
 	s->sender.packet.ackno = s->sender.packet.seqno + 1; //ackno should always be 1 higher than seqno
 
+	fprintf(stderr, "seqno: %i, buffer position: %i\n", s->sender.packet.seqno, s->sender.buffer_position);
 	//alert the user when user has exceeded sender's window size
 	if (s->sender.packet.seqno > s->windowSize + s->sender.buffer_position || s->sender.packet.seqno == s->windowSize + s->sender.buffer_position) {
 		fprintf(stderr, "**** You have exceeded the sender's window size. Packet will not be sent. **** \n");
@@ -280,7 +281,6 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 			return;
 		}
 
-
 		// Clear out the old data from the packet buffer
 		int j;
 		int start = pkt->len - DATA_PACKET_HEADER;
@@ -288,6 +288,7 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 			pkt->data[j] = '\0';
 		}
 
+		// Prepare a copy of the packet for the receiver's buffer
 		packet_t *receivingPacketCopy = malloc(sizeof (struct packet));
 		memcpy(receivingPacketCopy, pkt, sizeof (struct packet));
 		struct WindowBuffer *packetBuffer = malloc(sizeof(struct WindowBuffer));
@@ -295,39 +296,23 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 		packetBuffer->ptr = receivingPacketCopy;
 		packetBuffer->timeStamp = timestamp;
 
-//		// Clear out the old data from the packet buffer
-//		int j;
-//		int start = packetBuffer->ptr->len - DATA_PACKET_HEADER;
-//		for (j = start; j < MAX_DATA_SIZE; j++) {
-//			packetBuffer->ptr->data[j] = '\0';
-//		}
-
 		r->receiverWindowBuffer[pkt->seqno] = *packetBuffer;
 
+		/* when you receive the correct seqno you have been expecting,
+		 * recompute what the new ack should be */
 		if (r->receiver.last_frame_received == pkt->seqno) {
 			r->receiver.last_frame_received = compute_LFR(r);
 		}
 
 		rel_output(r);
 
-
-		packet_t *ackPacket = malloc(sizeof (struct packet));
-		ackPacket->len = ACK_PACKET_HEADER;
-		ackPacket->ackno = r->receiver.last_frame_received;
-		int ackLength = ackPacket->len;
-//		fprintf(stderr, "Sending the ack for: %i\n", ackPacket->ackno);
-
-		if (ackPacket->ackno > r->receiver.max_ack) {
-			r->receiver.max_ack = ackPacket->ackno;
+		if (r->receiver.last_frame_received > r->receiver.max_ack) {
+			r->receiver.max_ack = r->receiver.last_frame_received;
 		}
 
-		preparePacketForSending(ackPacket);
-		ackPacket->cksum = 0;
-		ackPacket->cksum = cksum(ackPacket, ackLength);
-
-		conn_sendpkt(r->c, ackPacket, ackPacket->len);
+		// method for transmit or retransmit ack is the same..
+		retransmit_ack(r, r->receiver.last_frame_received);
 	}
-
 }
 
 void rel_read(rel_t *s) {
@@ -341,13 +326,11 @@ void rel_read(rel_t *s) {
 	}
 
 	else if (data_size > 0 && data_size <= MAX_DATA_SIZE) {
-		//fprintf(stderr, "Called!\n");
 		send_data_pkt(s, data_size);
 	}
 
 	else if (data_size > MAX_DATA_SIZE) {
 		send_data_pkt(s, MAX_DATA_SIZE);
-		//fprintf(stderr, "Data needs to be split into multiple packets.\n");
 	}
 }
 
@@ -383,9 +366,9 @@ void rel_timer() {
 	int i;
 	int shift = r->sender.buffer_position;
 	for (i = shift; i < r->windowSize + shift; i++) {
-		if (r->senderWindowBuffer[i].isFull == 1) {  //you have already sent packet[i]
-			if (r->senderWindowBuffer[i].acknowledged == 0) { // you have not received ack for packet[i]
-				if ((timestamp - r->senderWindowBuffer[i].timeStamp) > 5) { //it has been more than 5 time periods
+		if (r->senderWindowBuffer[i].isFull == 1) {
+			if (r->senderWindowBuffer[i].acknowledged == 0) {
+				if ((timestamp - r->senderWindowBuffer[i].timeStamp) > 5) {
 					fprintf(stderr, "Retransmitted on location: %i\n", i);
 					retransmit_data(r, i);
 				}
