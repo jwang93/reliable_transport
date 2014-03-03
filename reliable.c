@@ -138,14 +138,12 @@ void preparePacketForSending(packet_t *pkt) {
 	if (packetLength >= DATA_PACKET_HEADER) {
 		pkt->seqno = htons(pkt->seqno);
 	}
-	pkt->cksum = htons(cksum(pkt->data, packetLength));
 }
 
 void convertPacketFromNetworkByteOrder(packet_t *pkt) {
 	pkt->len = ntohs(pkt->len);
 	pkt->ackno = ntohs(pkt->ackno);
 	pkt->seqno = ntohs(pkt->seqno);
-	pkt->cksum = ntohs(pkt->cksum);
 }
 
 /*
@@ -156,7 +154,6 @@ void retransmit_ack(rel_t *r, int ackVal) {
 	ackPacket->len = ACK_PACKET_HEADER;
 	ackPacket->ackno = ackVal;
 	int ackLength = ackPacket->len;
-	fprintf(stderr, "Sending the ack for: %i\n", ackPacket->ackno);
 	preparePacketForSending(ackPacket);
 	ackPacket->cksum = 0;
 	ackPacket->cksum = cksum(ackPacket, ackLength);
@@ -196,10 +193,10 @@ void send_data_pkt(rel_t *s, int data_size) {
 	s->sender.packet.seqno = s->sender.last_frame_sent;
 	s->sender.packet.ackno = s->sender.packet.seqno + 1; //ackno should always be 1 higher than seqno
 
-	fprintf(stderr, "seqno: %i, buffer position: %i\n", s->sender.packet.seqno, s->sender.buffer_position);
+	//fprintf(stderr, "seqno: %i, buffer position: %i\n", s->sender.packet.seqno, s->sender.buffer_position);
 	//alert the user when user has exceeded sender's window size
 	if (s->sender.packet.seqno > s->windowSize + s->sender.buffer_position || s->sender.packet.seqno == s->windowSize + s->sender.buffer_position) {
-		fprintf(stderr, "**** You have exceeded the sender's window size. Packet will not be sent. **** \n");
+//		fprintf(stderr, "**** You have exceeded the sender's window size. Packet will not be sent. **** \n");
 		s->sender.last_frame_sent--;
 		return;
 	}
@@ -235,7 +232,6 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 	int compare_checksum = cksum(pkt, ntohs(pkt->len));
 	convertPacketFromNetworkByteOrder(pkt);
 	if (compare_checksum != checksum) {
-		fprintf(stderr, "Checksums do not match. Packet corruption. Kill Connection. \n");
 		return;
 	}
 
@@ -243,7 +239,6 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 	// CASE 1: ACK packet
 	if (pkt->len == ACK_PACKET_HEADER) {
-//		fprintf(stderr, "Value of ack packet: %i\n", pkt->ackno);
 		int index = pkt->ackno;
 		r->senderWindowBuffer[index-1].acknowledged = 1;
 
@@ -264,8 +259,6 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 		// You are getting duplicate packets by nature of cumulative ack
 		if (r->receiverWindowBuffer[pkt->seqno].isFull == 1) {
-			fprintf(stderr, "Throwing away pkt[%i] because it's dup\n", pkt->seqno);
-
 			/* If the seqno of packet is less than the max ack the receiver has sent
 			 * that means an ack to the sender was dropped. Retransmit.
 			 */
@@ -277,7 +270,6 @@ void rel_recvpkt(rel_t *r, packet_t *pkt, size_t n) {
 
 		// Alerting the user when the receiver's window buffer is full.
 		if (pkt->seqno >= r->windowSize + r->receiver.buffer_position) {
-			fprintf(stderr, "**** You have exceeded the receiver's window size. Packet will be dropped and not buffered. **** \n");
 			return;
 		}
 
@@ -319,9 +311,7 @@ void rel_read(rel_t *s) {
 	int data_size = 0;
 	data_size = conn_input(s->c, s->sender.packet.data, MAX_DATA_SIZE);
 
-	fprintf(stderr, "Data size: %i\n", data_size);
 	if (data_size == 0) {
-		fprintf(stderr, "Data size of 0!\n");
 		return;
 	}
 
@@ -369,7 +359,6 @@ void rel_timer() {
 		if (r->senderWindowBuffer[i].isFull == 1) {
 			if (r->senderWindowBuffer[i].acknowledged == 0) {
 				if ((timestamp - r->senderWindowBuffer[i].timeStamp) > 5) {
-					fprintf(stderr, "Retransmitted on location: %i\n", i);
 					retransmit_data(r, i);
 				}
 			}
