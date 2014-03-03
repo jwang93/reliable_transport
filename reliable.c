@@ -14,7 +14,7 @@
 
 #include "rlib.h"
 
-#define MAX_DATA_SIZE 500
+#define MAX_DATA_SIZE 499
 #define ACK_PACKET_HEADER 8
 #define DATA_PACKET_HEADER 12
 
@@ -307,13 +307,14 @@ void rel_read(rel_t *s) {
 		return;
 	}
 
-	else if (data_size > 0 && data_size <= MAX_DATA_SIZE - 1) {
-		fprintf(stderr, "Called!\n");
+	else if (data_size > 0 && data_size <= MAX_DATA_SIZE) {
+		//fprintf(stderr, "Called!\n");
 		send_data_pkt(s, data_size);
 	}
 
-	else if (data_size >= MAX_DATA_SIZE) {
-		fprintf(stderr, "Data needs to be split into multiple packets.\n");
+	else if (data_size > MAX_DATA_SIZE) {
+		send_data_pkt(s, MAX_DATA_SIZE);
+		//fprintf(stderr, "Data needs to be split into multiple packets.\n");
 	}
 }
 
